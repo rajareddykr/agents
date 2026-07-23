@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Agentic AI & MCP · Agent Ops (vanilla)</title>
+<style>
+  :root{
+    --bg:#0b1020; --panel:#111834; --panel2:#0e1530; --border:#1e2a52;
+    --text:#e7ecff; --muted:#8aa0d6; --accent:#7c5cff; --accent2:#3aa0ff;
+    --green:#39d98a; --amber:#ffb020; --red:#ff5c7c; --pink:#ff6ba6;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Segoe UI',system-ui,sans-serif;background:
+    radial-gradient(1200px 600px at 70% -10%, #16204a 0%, var(--bg) 55%);
+    color:var(--text);min-height:100vh}
+  a{color:var(--accent2)}
+  header{display:flex;align-items:center;justify-content:space-between;
+    padding:14px 20px;border-bottom:1px solid var(--border)}
+  .brand{display:flex;align-items:center;gap:12px}
+  .logo{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));font-size:18px}
+  .brand h1{font-size:16px;margin:0;font-weight:700}
+  .brand small{color:var(--muted);font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+  .live{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--green);
+    background:#0f2033;border:1px solid #14406b;padding:6px 12px;border-radius:20px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--green);
+    box-shadow:0 0 0 0 rgba(57,217,138,.6);animation:pulse 1.6s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(57,217,138,.5)}
+    70%{box-shadow:0 0 0 8px rgba(57,217,138,0)}100%{box-shadow:0 0 0 0 rgba(57,217,138,0)}}
+  .grid{display:grid;grid-template-columns:300px 1fr 320px;gap:16px;padding:16px}
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel2));
+    border:1px solid var(--border);border-radius:14px;padding:14px}
+  .card h2{font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--muted);margin:0 0 12px;display:flex;align-items:center;gap:8px}
+  textarea{width:100%;min-height:70px;background:#0a1130;color:var(--text);
+    border:1px solid var(--border);border-radius:10px;padding:10px;resize:vertical;
+    font-family:inherit;font-size:13px}
+  button.run{width:100%;margin-top:10px;padding:12px;border:0;border-radius:10px;
+    color:#fff;font-weight:700;cursor:pointer;font-size:14px;
+    background:linear-gradient(135deg,var(--accent),#5a3ff0)}
+  button.run:disabled{opacity:.6;cursor:not-allowed}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+  .stat{background:linear-gradient(180deg,var(--panel),var(--panel2));
+    border:1px solid var(--border);border-radius:14px;padding:14px}
+  .stat .n{font-size:26px;font-weight:800}
+  .stat .l{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-top:4px}
+  .stat.flow .n{color:var(--accent2)} .stat.llm .n{color:var(--accent)}
+  .stat.guard .n{color:var(--green)} .stat.block .n{color:var(--red)}
+  .topo{position:relative;height:330px;margin:6px 0 4px}
+  .node{position:absolute;width:150px;background:linear-gradient(180deg,#141d40,#0f1734);
+    border:1px solid var(--border);border-radius:12px;padding:10px 12px;text-align:center;
+    transition:.25s;z-index:2}
+  .node .ic{font-size:20px}
+  .node .nm{font-weight:700;font-size:13px;margin-top:2px}
+  .node .st{font-size:10px;letter-spacing:.1em;color:var(--muted);margin-top:2px}
+  .node.RUNNING{border-color:var(--accent);box-shadow:0 0 18px rgba(124,92,255,.5)}
+  .node.DONE{border-color:var(--green);box-shadow:0 0 18px rgba(57,217,138,.4)}
+  .node .st.RUNNING{color:var(--accent)} .node .st.DONE{color:var(--green)}
+  #coordinator{left:50%;transform:translateX(-50%);top:0}
+  #fin_agent{left:6%;top:120px} #res_agent{right:6%;top:120px}
+  #fin_mcp{left:6%;top:235px} #news_mcp{right:6%;top:235px}
+  svg.edges{position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none}
+  .edge{stroke:#26356b;stroke-width:2;fill:none}
+  .edge.hot{stroke:var(--accent2);stroke-width:3;filter:drop-shadow(0 0 6px var(--accent2))}
+  .filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+  .chip{font-size:11px;padding:5px 11px;border-radius:20px;cursor:pointer;
+    border:1px solid var(--border);color:var(--muted);background:#0c1330}
+  .chip.active{color:#fff;background:var(--accent);border-color:var(--accent)}
+  .stream{max-height:300px;overflow:auto;font-size:12.5px}
+  .ev{display:flex;gap:10px;padding:8px 6px;border-left:3px solid var(--border);
+    margin-bottom:6px;background:#0a1130;border-radius:0 8px 8px 0;animation:fade .3s}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1}}
+  .ev .t{color:var(--muted);font-variant-numeric:tabular-nums;flex:0 0 62px}
+  .ev .tag{font-size:9px;font-weight:800;letter-spacing:.08em;padding:2px 7px;
+    border-radius:6px;height:fit-content;flex:0 0 auto}
+  .ev .msg{flex:1}
+  .tag.flow{background:#123b6b;color:#9fd0ff}
+  .tag.model{background:#2a1b5c;color:#c3b0ff}
+  .tag.mcp_in{background:#0f3a2f;color:#7fe6c0} .tag.mcp_out{background:#0f3a2f;color:#7fe6c0}
+  .tag.a2a{background:#3a2f0f;color:#ffd67a}
+  .tag.guardrail{background:#123b6b;color:#9fd0ff}
+  .tag.blocked{background:#4a1020;color:#ff9db4}
+  .tag.status{background:#1a2140;color:#9fb0e0}
+  .final{white-space:pre-wrap;font-size:13px;line-height:1.55;color:#dfe6ff}
+  .placeholder{color:var(--muted);font-style:italic}
+  .legend{display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--muted)}
+  .legend span{display:flex;align-items:center;gap:5px}
+  .sw{width:9px;height:9px;border-radius:50%}
+  .kv{font-size:11px;color:var(--muted);word-break:break-all}
+  ::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:#22305e;border-radius:8px}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="logo">⚡</div>
+    <div><h1>Agentic AI &amp; MCP <span style="color:var(--muted);font-weight:500">Agent Ops · vanilla</span></h1>
+      <small>Dashboard</small></div>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <span id="buildBadge" class="live" style="color:var(--accent2);border-color:#14406b;background:#0f2033">BUILD · VANILLA (no governance)</span>
+    <span id="modeBadge" class="live" style="color:var(--amber);border-color:#5a4410;background:#241c07">DATA · …</span>
+    <div class="live"><span class="dot"></span><span id="conn">Live · Connected</span></div>
+  </div>
+</header>
+
+<div class="grid">
+  <!-- LEFT -->
+  <div>
+    <div class="card">
+      <h2>🛰️ Mission Control</h2>
+      <textarea id="mission" placeholder="Describe a mission...">Analyze the market trends for HDFC bank</textarea>
+      <button class="run" id="runBtn">▶ Run Mission</button>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h2>🔎 Agent Sessions <span id="sessCount" style="margin-left:auto;color:var(--accent2)">0</span></h2>
+      <div id="sessions"><div class="placeholder">No sessions yet.</div></div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h2>🛡️ Node Legend</h2>
+      <div class="legend">
+        <span><i class="sw" style="background:var(--pink)"></i>Coordinator</span>
+        <span><i class="sw" style="background:var(--green)"></i>Fin Agent</span>
+        <span><i class="sw" style="background:var(--accent2)"></i>Res Agent</span>
+        <span><i class="sw" style="background:var(--amber)"></i>FIN MCP</span>
+        <span><i class="sw" style="background:var(--amber)"></i>NEWS MCP</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER -->
+  <div>
+    <div class="stats">
+      <div class="stat flow"><div class="n" id="c_flow">0</div><div class="l">Flow Count</div></div>
+      <div class="stat llm"><div class="n" id="c_llm">0</div><div class="l">LLM Calls</div></div>
+      <div class="stat guard"><div class="n" id="c_guard">0</div><div class="l">Guardrail</div></div>
+      <div class="stat block"><div class="n" id="c_block">0</div><div class="l">Blocked</div></div>
+    </div>
+
+    <div class="card">
+      <h2>❇️ Live Topology</h2>
+      <div class="topo" id="topo">
+        <svg class="edges" id="edges"></svg>
+        <div class="node" id="coordinator"><div class="ic">🧭</div><div class="nm">Coordinator</div><div class="st">IDLE</div></div>
+        <div class="node" id="fin_agent"><div class="ic">💼</div><div class="nm">Financial Agent</div><div class="st">IDLE</div></div>
+        <div class="node" id="res_agent"><div class="ic">📑</div><div class="nm">Research Agent</div><div class="st">IDLE</div></div>
+        <div class="node" id="fin_mcp"><div class="ic">🏦</div><div class="nm">FIN MCP</div><div class="st">IDLE</div></div>
+        <div class="node" id="news_mcp"><div class="ic">🌐</div><div class="nm">NEWS MCP</div><div class="st">IDLE</div></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>▶ Structured Event Stream <span id="evCount" style="margin-left:auto;color:var(--accent2)">0</span></h2>
+      <div class="filters" id="filters">
+        <span class="chip active" data-f="all">All</span>
+        <span class="chip" data-f="model">Model</span>
+        <span class="chip" data-f="mcp">MCP</span>
+        <span class="chip" data-f="mcp_in">MCP In</span>
+        <span class="chip" data-f="mcp_out">MCP Out</span>
+        <span class="chip" data-f="a2a">A2A</span>
+        <span class="chip" data-f="blocked">Blocked only</span>
+        <span class="chip" data-f="clear" style="margin-left:auto">⛶ Clear</span>
+      </div>
+      <div class="stream" id="stream"><div class="placeholder">Waiting for events…</div></div>
+    </div>
+  </div>
+
+  <!-- RIGHT -->
+  <div>
+    <div class="card">
+      <h2>📌 Current Task</h2>
+      <div id="curTask" class="placeholder">No active mission.</div>
+      <div id="curSess" class="kv" style="margin-top:8px"></div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h2>🟡 Plan</h2>
+      <div id="plan" class="placeholder">Idle.</div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h2>📊 Final Intelligence</h2>
+      <div id="final" class="placeholder">Pipeline idle — run a mission to watch the stream.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const counts = {flow:0, model:0, guardrail:0, blocked:0};
+let filter = "all", evTotal = 0, sessions = {};
+
+const TAGLABEL = {flow:"FLOW",model:"MODEL",mcp_in:"MCP IN",mcp_out:"MCP OUT",
+  a2a:"A2A",guardrail:"GUARD",blocked:"BLOCKED",status:"STATUS"};
+
+function drawEdges(){
+  const svg = $("#edges"), topo = $("#topo");
+  const R = topo.getBoundingClientRect();
+  const c = id => { const b = $("#"+id).getBoundingClientRect();
+    return {x:b.left-R.left+b.width/2, y:b.top-R.top+b.height/2}; };
+  const pairs = [["coordinator","fin_agent"],["coordinator","res_agent"],
+    ["fin_agent","fin_mcp"],["res_agent","news_mcp"]];
+  svg.innerHTML = pairs.map(([a,b])=>{
+    const p=c(a),q=c(b);
+    return `<path class="edge" id="e_${a}_${b}" d="M${p.x},${p.y} L${q.x},${q.y}"/>`;
+  }).join("");
+}
+
+function flashEdge(a,b){
+  const e = $("#e_"+a+"_"+b) || $("#e_"+b+"_"+a);
+  if(!e) return;
+  e.classList.add("hot");
+  setTimeout(()=>e.classList.remove("hot"), 700);
+}
+
+function setStatus(id, st){
+  const n = $("#"+id); if(!n) return;
+  n.classList.remove("RUNNING","DONE");
+  if(st==="RUNNING"||st==="DONE") n.classList.add(st);
+  const s = n.querySelector(".st");
+  s.textContent = st; s.className = "st " + st;
+}
+
+function matches(ev){
+  if(filter==="all") return true;
+  if(filter==="mcp") return ev.type==="mcp_in"||ev.type==="mcp_out";
+  if(filter==="blocked") return ev.type==="blocked";
+  return ev.type===filter;
+}
+
+function addEvent(ev){
+  evTotal++; $("#evCount").textContent = evTotal;
+  if(counts[ev.type]!==undefined) counts[ev.type]++;
+  $("#c_flow").textContent = counts.flow;
+  $("#c_llm").textContent = counts.model;
+  $("#c_guard").textContent = counts.guardrail;
+  $("#c_block").textContent = counts.blocked;
+
+  if(ev.type==="status") setStatus(ev.source, ev.data.status);
+  if(ev.target) flashEdge(ev.source, ev.target);
+
+  // sessions panel
+  if(ev.session && !sessions[ev.session]){
+    sessions[ev.session] = true;
+    $("#sessCount").textContent = Object.keys(sessions).length;
+  }
+
+  if(ev.type==="flow" && /analysis started/i.test(ev.message)){
+    $("#plan").textContent = "Planning… decomposing mission into specialist tasks.";
+    $("#plan").className = "";
+  }
+  if(ev.type==="model" && ev.data && ev.data.tag==="plan"){
+    $("#plan").textContent = "Coordinator planning + specialists dispatched (parallel).";
+  }
+
+  if(ev.type==="status" && ev.data.status==="DONE"){
+    $("#plan").textContent = "Completed.";
+  }
+
+  if(!matches(ev)) return;
+  const ph = $("#stream .placeholder"); if(ph) ph.remove();
+  const div = document.createElement("div");
+  div.className = "ev";
+  const tag = TAGLABEL[ev.type] || ev.type.toUpperCase();
+  div.innerHTML = `<span class="t">${ev.clock}</span>`+
+    `<span class="tag ${ev.type}">${tag}</span>`+
+    `<span class="msg">${escapeHtml(ev.message)}</span>`;
+  const s = $("#stream"); s.appendChild(div); s.scrollTop = s.scrollHeight;
+}
+
+function escapeHtml(t){return (t||"").replace(/[&<>]/g,
+  c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+
+// filters
+$("#filters").addEventListener("click", e=>{
+  const chip = e.target.closest(".chip"); if(!chip) return;
+  const f = chip.dataset.f;
+  if(f==="clear"){ $("#stream").innerHTML='<div class="placeholder">Cleared.</div>'; return; }
+  filter = f;
+  document.querySelectorAll(".chip").forEach(c=>c.classList.toggle("active",c===chip));
+});
+
+// run mission
+$("#runBtn").addEventListener("click", async ()=>{
+  const mission = $("#mission").value.trim(); if(!mission) return;
+  const btn = $("#runBtn"); btn.disabled = true; btn.textContent = "⏳ Running…";
+  $("#curTask").textContent = mission; $("#curTask").className = "";
+  $("#final").textContent = "Pipeline running… watch the event stream.";
+  $("#final").className = "placeholder";
+  try{
+    const r = await fetch("/api/mission",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({mission})});
+    await r.json();
+  }catch(e){ $("#curTask").textContent = "Error: "+e; }
+  setTimeout(()=>{ btn.disabled=false; btn.textContent="▶ Run Mission"; }, 8000);
+});
+
+// websocket
+let ws;
+function connect(){
+  ws = new WebSocket((location.protocol==="https:"?"wss":"ws")+"://"+location.host+"/ws");
+  ws.onopen = ()=>{ $("#conn").textContent="Live · Connected"; };
+  ws.onclose = ()=>{ $("#conn").textContent="Reconnecting…"; setTimeout(connect,1500); };
+  ws.onmessage = e=>{
+    const ev = JSON.parse(e.data);
+    addEvent(ev);
+    if(ev.session){ $("#curSess").textContent = "session: "+ev.session; }
+    if(ev.type==="flow" && /final intelligence ready/i.test(ev.message) && ev.data && ev.data.final){
+      $("#final").textContent = ev.data.final;
+      $("#final").className = "final";
+    }
+  };
+}
+
+fetch("/api/topology").then(r=>r.json()).then(t=>{
+  const b=$("#modeBadge"); const live=t.data_mode==="live";
+  b.textContent = live ? "DATA · LIVE (Finnhub)" : "DATA · MOCK";
+  b.style.color = live ? "var(--green)" : "var(--amber)";
+  b.style.borderColor = live ? "#14406b" : "#5a4410";
+  b.style.background = live ? "#0f2033" : "#241c07";
+  const bb=$("#buildBadge");
+  bb.textContent = "BUILD · VANILLA · " + (t.run_mode||"");
+}).catch(()=>{});
+window.addEventListener("resize", drawEdges);
+drawEdges(); connect();
+</script>
+</body>
+</html>

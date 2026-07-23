@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Vanilla → Governed · Animated Migration Explainer</title>
+<style>
+  :root{
+    --bg:#0a0e1c; --bg2:#0e1430; --panel:#121a3a; --border:#243063;
+    --ink:#e9edff; --muted:#93a3d6; --accent:#7c5cff; --accent2:#3aa0ff;
+    --green:#39d98a; --amber:#ffb020; --red:#ff5c7c; --pink:#ff6ba6; --gold:#ffd67a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:radial-gradient(1400px 700px at 70% -12%, #17204c 0%, var(--bg) 58%);
+    color:var(--ink);font-family:'Segoe UI',system-ui,-apple-system,sans-serif;overflow:hidden}
+  #stage{position:relative;height:100vh;width:100vw;display:flex;align-items:center;justify-content:center}
+  .scene{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+    flex-direction:column;padding:40px 56px;text-align:center}
+  .scene.on{display:flex}
+  h1{font-size:clamp(28px,5vw,56px);margin:0 0 10px;letter-spacing:-.5px;font-weight:800;line-height:1.05}
+  h2{font-size:clamp(20px,3.2vw,34px);margin:0 0 8px;font-weight:800}
+  .sub{color:var(--muted);font-size:clamp(14px,1.7vw,20px);max-width:900px;line-height:1.5}
+  .kicker{font-size:12px;letter-spacing:.28em;text-transform:uppercase;color:var(--accent2);
+    font-weight:800;margin-bottom:14px}
+  .kicker.dev{color:var(--gold)}
+  .grow{animation:grow .7s cubic-bezier(.2,.8,.2,1) both}
+  .fade{animation:fade .8s ease both}
+  .slideL{animation:slideL .7s cubic-bezier(.2,.8,.2,1) both}
+  .slideR{animation:slideR .7s cubic-bezier(.2,.8,.2,1) both}
+  .pop{animation:pop .6s cubic-bezier(.2,1.4,.4,1) both}
+  @keyframes grow{from{opacity:0;transform:scale(.86)}to{opacity:1;transform:scale(1)}}
+  @keyframes fade{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  @keyframes slideL{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:none}}
+  @keyframes slideR{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:none}}
+  @keyframes pop{from{opacity:0;transform:scale(.4)}to{opacity:1;transform:scale(1)}}
+  .d1{animation-delay:.15s}.d2{animation-delay:.35s}.d3{animation-delay:.55s}
+  .d4{animation-delay:.8s}.d5{animation-delay:1.05s}.d6{animation-delay:1.3s}.d7{animation-delay:1.6s}
+
+  /* topology */
+  .topo{position:relative;width:min(880px,86vw);height:min(430px,52vh);margin-top:10px}
+  .node{position:absolute;width:150px;padding:12px 10px;border-radius:14px;text-align:center;
+    background:linear-gradient(180deg,#16204a,#101838);border:1.5px solid var(--border);
+    box-shadow:0 8px 30px rgba(0,0,0,.35)}
+  .node .ic{font-size:26px}
+  .node .nm{font-weight:800;font-size:14px;margin-top:2px}
+  .node .rl{font-size:10.5px;color:var(--muted);letter-spacing:.06em}
+  .node.hot{border-color:var(--accent);box-shadow:0 0 26px rgba(124,92,255,.6)}
+  .node.done{border-color:var(--green);box-shadow:0 0 26px rgba(57,217,138,.5)}
+  #n_coord{left:50%;top:0;transform:translateX(-50%)}
+  #n_fin{left:2%;top:150px} #n_res{right:2%;top:150px}
+  #n_finmcp{left:2%;top:300px} #n_newsmcp{right:2%;top:300px}
+  #n_cp{left:50%;top:150px;transform:translateX(-50%);width:180px;border-color:#3a2f6b;
+    background:linear-gradient(180deg,#241a4a,#160f30)}
+  svg.wires{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+  .wire{stroke:#2a3a72;stroke-width:2.5;fill:none;opacity:.6}
+  .wire.flow{stroke-dasharray:7 9;animation:dash 1s linear infinite}
+  .wire.hot{stroke:var(--accent2);stroke-width:3.5;filter:drop-shadow(0 0 6px var(--accent2))}
+  .wire.trust{stroke:var(--green);stroke-dasharray:2 7;stroke-width:3}
+  @keyframes dash{to{stroke-dashoffset:-32}}
+  .badge{position:absolute;font-size:10px;font-weight:800;padding:3px 8px;border-radius:20px;
+    background:#12351f;color:var(--green);border:1px solid #245c3a;white-space:nowrap}
+  .lock{position:absolute;font-size:20px}
+  .pkt{position:absolute;width:14px;height:14px;border-radius:50%;
+    background:radial-gradient(circle,#cfe0ff,#7c5cff);
+    box-shadow:0 0 12px var(--accent);opacity:0}
+
+  /* cards row */
+  .cards{display:flex;gap:20px;flex-wrap:wrap;justify-content:center;margin-top:24px;max-width:1000px}
+  .qcard{width:270px;background:linear-gradient(180deg,var(--panel),var(--bg2));
+    border:1.5px solid var(--border);border-radius:16px;padding:22px 20px}
+  .qcard .q{font-size:30px;margin-bottom:8px}
+  .qcard h3{margin:0 0 6px;font-size:18px}
+  .qcard p{margin:0;color:var(--muted);font-size:13.5px;line-height:1.45}
+  .qcard .tagm{display:inline-block;margin-top:12px;font-size:11px;font-weight:800;letter-spacing:.05em;
+    padding:4px 10px;border-radius:20px;background:#1a2350;color:var(--accent2);border:1px solid #2a3a72}
+
+  /* code panels */
+  .codewrap{display:flex;gap:22px;align-items:stretch;margin-top:20px;max-width:1040px;width:100%;
+    justify-content:center;flex-wrap:wrap}
+  .code{flex:1;min-width:330px;max-width:500px;background:#080c1a;border:1.5px solid var(--border);
+    border-radius:14px;padding:16px 18px;text-align:left;font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+    font-size:13px;line-height:1.5;overflow:auto;max-height:44vh}
+  .code .h{font-family:'Segoe UI',sans-serif;font-weight:800;font-size:12px;letter-spacing:.1em;
+    text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+  .code.before .h{color:var(--muted)} .code.after .h{color:var(--green)}
+  .code .cmt{color:#5f6f9c} .code .add{color:#8ef0bf} .code .key{color:#c3b0ff} .code .str{color:#ffd67a}
+  .code .del{color:#ff9db4;text-decoration:line-through;opacity:.6}
+  .arrowbtwn{display:flex;align-items:center;font-size:34px;color:var(--accent)}
+  .filech{display:inline-block;font-size:11px;font-weight:700;color:var(--gold);background:#241c07;
+    border:1px solid #5a4410;border-radius:6px;padding:2px 8px;margin-left:8px;font-family:'Segoe UI'}
+
+  .steprow{display:flex;gap:10px;justify-content:center;margin-top:22px;flex-wrap:wrap}
+  .pill{font-size:12.5px;font-weight:700;padding:8px 14px;border-radius:22px;border:1.5px solid var(--border);
+    color:var(--muted);background:#0d1430}
+  .pill.act{color:#fff;background:linear-gradient(135deg,var(--accent),#5a3ff0);border-color:transparent;
+    box-shadow:0 0 18px rgba(124,92,255,.5)}
+  .pill.ok{color:var(--green);border-color:#245c3a;background:#0f2418}
+
+  .checklist{text-align:left;max-width:760px;margin-top:18px;font-size:16px;line-height:2}
+  .checklist div{opacity:0}
+  .checklist .c{color:var(--green);font-weight:800;margin-right:10px}
+
+  /* controls */
+  #bar{position:fixed;left:0;right:0;bottom:0;height:4px;background:#141c3e;z-index:40}
+  #barfill{height:100%;width:0;background:linear-gradient(90deg,var(--accent2),var(--accent));transition:width .2s linear}
+  #ctl{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center;
+    background:rgba(12,18,42,.86);border:1px solid var(--border);border-radius:40px;padding:8px 12px;z-index:41;
+    backdrop-filter:blur(8px)}
+  #ctl button{background:#18224e;color:var(--ink);border:1px solid var(--border);
+    width:40px;height:40px;border-radius:50%;font-size:16px;cursor:pointer;display:grid;place-items:center}
+  #ctl button:hover{border-color:var(--accent)}
+  #ctl .lab{font-size:12px;color:var(--muted);padding:0 8px;min-width:150px;text-align:center}
+  .dots{display:flex;gap:6px;align-items:center}
+  .dot{width:9px;height:9px;border-radius:50%;background:#2a3568;cursor:pointer}
+  .dot.on{background:var(--accent2);box-shadow:0 0 8px var(--accent2)}
+  .layerbadge{position:fixed;top:18px;left:22px;font-size:11px;font-weight:800;letter-spacing:.18em;
+    text-transform:uppercase;padding:7px 14px;border-radius:20px;z-index:41;border:1px solid var(--border)}
+  .layerbadge.concept{color:var(--accent2);background:#0f2033;border-color:#14406b}
+  .layerbadge.dev{color:var(--gold);background:#241c07;border-color:#5a4410}
+  .hint{position:fixed;top:18px;right:22px;font-size:11px;color:var(--muted);z-index:41}
+  .big{font-size:clamp(40px,8vw,120px);line-height:1}
+</style>
+</head>
+<body>
+<div class="layerbadge concept" id="layerBadge">Concept</div>
+<div class="hint">Space = play/pause · ← → = step</div>
+<div id="stage"><!-- scenes injected --></div>
+
+<div id="bar"><div id="barfill"></div></div>
+<div id="ctl">
+  <button id="prev" title="Previous">◀</button>
+  <button id="play" title="Play/Pause">⏸</button>
+  <button id="next" title="Next">▶</button>
+  <span class="lab" id="lab">Scene 1</span>
+  <span class="dots" id="dots"></span>
+</div>
+
+<script>
+/* ---------- scene HTML builders ---------- */
+function topo(opts){
+  opts = opts || {};
+  const cp = opts.cp ? `<div class="node grow d4" id="n_cp"><div class="ic">🛡️</div><div class="nm">Control Plane</div><div class="rl">AGT governance</div></div>` : "";
+  const badges = opts.ids ? `
+    <div class="badge pop d5" style="left:2%;top:128px">did:mesh · fin</div>
+    <div class="badge pop d5" style="right:2%;top:128px">did:mesh · res</div>
+    <div class="badge pop d5" style="left:50%;top:-22px;transform:translateX(-50%)">did:mesh · coord</div>` : "";
+  const locks = opts.locks ? `
+    <div class="lock pop d6" style="left:26%;top:120px">🔒</div>
+    <div class="lock pop d6" style="right:26%;top:120px">🔒</div>` : "";
+  const wireCls = opts.trust ? "wire trust" : (opts.flow ? "wire flow" : "wire");
+  const cpWires = opts.cp ? `
+     <path class="wire" style="stroke:#3a2f6b" d="M295,60 C 360,110 400,110 440,150"/>
+     <path class="wire" style="stroke:#3a2f6b" d="M150,190 C 300,150 360,150 440,175"/>
+     <path class="wire" style="stroke:#3a2f6b" d="M730,190 C 580,150 520,150 460,175"/>` : "";
+  return `<div class="topo fade d3">
+    <svg class="wires" viewBox="0 0 880 360" preserveAspectRatio="none">
+      <path class="${wireCls}" id="w_cf" d="M420,52 C 300,90 170,110 120,150"/>
+      <path class="${wireCls}" id="w_cr" d="M460,52 C 580,90 710,110 760,150"/>
+      <path class="wire ${opts.flow?'flow':''}" d="M120,210 L120,300"/>
+      <path class="wire ${opts.flow?'flow':''}" d="M760,210 L760,300"/>
+      ${cpWires}
+    </svg>
+    <div class="node grow ${opts.hotc?'hot':''}" id="n_coord"><div class="ic">🧭</div><div class="nm">Coordinator</div><div class="rl">plan · fuse</div></div>
+    <div class="node grow d1 ${opts.hotf?'hot':''}" id="n_fin"><div class="ic">💼</div><div class="nm">Financial Agent</div><div class="rl">quant view</div></div>
+    <div class="node grow d1 ${opts.hotr?'hot':''}" id="n_res"><div class="ic">📑</div><div class="nm">Research Agent</div><div class="rl">news · sentiment</div></div>
+    <div class="node grow d2" id="n_finmcp"><div class="ic">🏦</div><div class="nm">FIN MCP</div><div class="rl">3 tools</div></div>
+    <div class="node grow d2" id="n_newsmcp"><div class="ic">🌐</div><div class="nm">NEWS MCP</div><div class="rl">2 tools</div></div>
+    ${cp}${badges}${locks}
+  </div>`;
+}
+
+const SCENES = [
+  /* ---------- LAYER 1 · CONCEPT ---------- */
+  {layer:"concept", lab:"Title", dur:6500, html:`
+    <div class="kicker fade">A migration story · agentic-mcp-ops</div>
+    <h1 class="fade d1">From <span style="color:var(--accent2)">Vanilla</span> to <span style="color:var(--green)">Governed</span></h1>
+    <div class="sub fade d2">The same multi-agent app — a Coordinator and two specialists calling MCP tools —
+      grown up in five safe steps: <b style="color:var(--ink)">identity</b>, <b style="color:var(--ink)">trust</b>, and <b style="color:var(--ink)">authorization</b>.</div>
+    <div class="big fade d3" style="margin-top:18px">🧭 🤝 🛡️</div>`},
+
+  {layer:"concept", lab:"Meet the cast", dur:7500, html:`
+    <div class="kicker fade">The cast</div>
+    <h2 class="fade">Five players, one mission</h2>
+    <div class="sub fade d1">A <b>Coordinator</b> plans the mission and delegates — in parallel — to a
+      <b>Financial</b> and a <b>Research</b> agent. Each calls its own <b>MCP</b> tool server.</div>
+    ${topo({})}`},
+
+  {layer:"concept", lab:"The vanilla run", dur:8500, html:`
+    <div class="kicker fade">The vanilla run</div>
+    <h2 class="fade">It works — but nobody's watching</h2>
+    <div class="sub fade d1">Mission flows in → coordinator delegates → agents call tools → results are fused.
+      The only safety net is a <b>local regex guardrail</b>. No identity, no trust check, no audit.</div>
+    ${topo({flow:true,hotc:true,hotf:true,hotr:true})}
+    <div class="sub fade d5" style="margin-top:14px;color:var(--amber)">⚠ Who is each agent? Can they be trusted? Who approved this action? — unanswered.</div>`},
+
+  {layer:"concept", lab:"Three questions", dur:9000, html:`
+    <div class="kicker fade">What governance adds</div>
+    <h2 class="fade">Three questions, three answers</h2>
+    <div class="cards">
+      <div class="qcard pop d1"><div class="q">🪪</div><h3>Who are you?</h3><p>Each agent earns a cryptographic identity — a <b>did:mesh</b> with an Ed25519 keypair.</p><span class="tagm">IDENTITY</span></div>
+      <div class="qcard pop d3"><div class="q">🤝</div><h3>Can I trust you?</h3><p>Before delegating, agents run a <b>handshake</b>: a challenge signed by the peer and verified.</p><span class="tagm">TRUST</span></div>
+      <div class="qcard pop d5"><div class="q">🛡️</div><h3>Are you allowed?</h3><p>Every action is checked against the <b>control plane</b> — allow, or block &amp; audit.</p><span class="tagm">AUTHORIZATION</span></div>
+    </div>`},
+
+  {layer:"concept", lab:"The governed picture", dur:8500, html:`
+    <div class="kicker fade">The destination</div>
+    <h2 class="fade">Same pipeline, now accountable</h2>
+    <div class="sub fade d1">Identities on every node, a verified handshake before delegation, and a control plane
+      that authorizes and records every decision.</div>
+    ${topo({cp:true,ids:true,locks:true,trust:true})}`},
+
+  /* ---------- LAYER 2 · DEVELOPER ---------- */
+  {layer:"dev", lab:"How to get there", dur:7000, html:`
+    <div class="kicker dev fade">Developer track</div>
+    <h1 class="fade d1">Five steps, each testable</h1>
+    <div class="sub fade d2">Every step is independently runnable and reversible. Keep it
+      <b style="color:var(--gold)">fail-open</b> throughout, run the self-test after each, then move on.</div>
+    <div class="steprow">
+      <span class="pill act fade d3">0 · Prereqs</span>
+      <span class="pill fade d3">1 · Authorize tools</span>
+      <span class="pill fade d4">2 · Govern methods</span>
+      <span class="pill fade d4">3 · Identities</span>
+      <span class="pill fade d5">4 · Handshake</span>
+      <span class="pill fade d5">5 · Publish</span>
+    </div>`},
+
+  {layer:"dev", lab:"Step 0 · Prereqs", dur:8000, html:`
+    <div class="kicker dev fade">Step 0</div>
+    <h2 class="fade">Prerequisites <span class="filech">.env</span></h2>
+    <div class="sub fade d1">Bring up the control plane, install the SDK with the mesh extra, and add AGT settings.
+      Keep <b>AGT_FAIL_OPEN=true</b> so a missing CP never breaks the demo.</div>
+    <div class="codewrap"><div class="code after fade d2" style="max-width:640px">
+      <div class="h">🔧 .env + install</div>
+      <span class="cmt"># install SDK (mesh features live behind the extra)</span><br>
+      pip install -e agent-os-sdk<span class="key">[mesh,bootstrap]</span><br><br>
+      <span class="cmt"># .env</span><br>
+      <span class="key">AGT_CP_URL</span>=<span class="str">http://localhost:20355</span><br>
+      <span class="key">AGT_ORG_CODE</span>=<span class="str">demodevelop</span><br>
+      <span class="key">AGT_BOOTSTRAP_TOKEN</span>=<span class="str">agt_boot_…</span><br>
+      <span class="key">AGT_FAIL_OPEN</span>=<span class="str">true</span>  <span class="cmt"># strict later</span>
+    </div></div>
+    <div class="steprow"><span class="pill ok fade d5">✓ smoke_test.py still PASS</span></div>`},
+
+  {layer:"dev", lab:"Step 1 · Authorize tools", dur:9500, html:`
+    <div class="kicker dev fade">Step 1</div>
+    <h2 class="fade">Authorize every tool call <span class="filech">mcp/base.py</span></h2>
+    <div class="sub fade d1">The vanilla <code>_precheck</code> seam already isolates the pre-check. Add a control-plane
+      <code>authorize()</code> next to the local guardrail — defence in depth.</div>
+    <div class="codewrap">
+      <div class="code before slideL d2"><div class="h">▖ Vanilla</div>
+        <span class="key">def</span> _precheck(self, action, caller, kwargs):<br>
+        &nbsp;&nbsp;payload = " ".join(str(v) …)<br>
+        &nbsp;&nbsp;<span class="key">return</span> guardrails.check(payload)</div>
+      <div class="arrowbtwn fade d3">➜</div>
+      <div class="code after slideR d3"><div class="h">✓ Governed</div>
+        <span class="key">def</span> _precheck(self, action, caller, kwargs):<br>
+        &nbsp;&nbsp;local = guardrails.check(payload)<br>
+        &nbsp;&nbsp;<span class="key">if not</span> local.allowed: <span class="key">return</span> local<br>
+        &nbsp;&nbsp;<span class="add">governance.authorize(action, caller, **ctx)</span><br>
+        &nbsp;&nbsp;<span class="key">return</span> local</div>
+    </div>
+    <div class="steprow"><span class="pill ok fade d6">✓ deny rule → BLOCKED event + decision in CP</span></div>`},
+
+  {layer:"dev", lab:"Step 2 · Govern methods", dur:9000, html:`
+    <div class="kicker dev fade">Step 2</div>
+    <h2 class="fade">Govern the whole analysis <span class="filech">financial_agent.py</span></h2>
+    <div class="sub fade d1">Wrap each specialist's <code>analyze()</code> so the control plane authorizes the entire
+      action under that agent — a one-line decorator.</div>
+    <div class="codewrap">
+      <div class="code before slideL d2"><div class="h">▖ Vanilla</div>
+        <span class="key">async def</span> analyze(self, entity):<br>
+        &nbsp;&nbsp;<span class="cmt"># runs unconditionally</span><br>
+        &nbsp;&nbsp;…</div>
+      <div class="arrowbtwn fade d3">➜</div>
+      <div class="code after slideR d3"><div class="h">✓ Governed</div>
+        <span class="add">@governance.governed(</span><br>
+        &nbsp;&nbsp;<span class="add">action=<span class="str">"fin_agent.analyze"</span>)</span><br>
+        <span class="key">async def</span> analyze(self, entity):<br>
+        &nbsp;&nbsp;…  <span class="cmt"># deny → graceful blocked result</span></div>
+    </div>
+    <div class="steprow"><span class="pill ok fade d5">✓ coordinator still fuses when a peer is blocked</span></div>`},
+
+  {layer:"dev", lab:"Step 3 · Identities", dur:9500, html:`
+    <div class="kicker dev fade">Step 3</div>
+    <h2 class="fade">One identity per process <span class="filech">governance.py</span></h2>
+    <div class="sub fade d1">The SDK binds <b>one identity per process</b>, read at import. So seed the role's token
+      <b>before</b> importing agt_sdk, and run one process per agent (the launcher already does).</div>
+    <div class="codewrap"><div class="code after fade d2" style="max-width:660px">
+      <div class="h">🪪 seed from AGENT_ROLE (top of module)</div>
+      _ROLE = os.environ.get(<span class="str">"AGENT_ROLE"</span>, <span class="str">"coordinator"</span>)<br>
+      tok, name, aid = _SPECS[_ROLE]<br>
+      os.environ[<span class="str">"AGT_BOOTSTRAP_TOKEN"</span>] = os.environ[tok]<br>
+      os.environ[<span class="str">"AGT_AGENT_ID"</span>]   = aid<br>
+      <span class="cmt"># ...only now:</span> <span class="key">from</span> agt_sdk <span class="key">import</span> governed
+    </div></div>
+    <div class="steprow">
+      <span class="pill act pop d4">🧭 coordinator</span>
+      <span class="pill act pop d5">💼 fin_agent</span>
+      <span class="pill act pop d6">📑 res_agent</span>
+    </div>
+    <div class="sub fade d7" style="margin-top:10px;color:var(--gold)">✓ three distinct DIDs in the Agent Registry</div>`},
+
+  {layer:"dev", lab:"Step 4 · Handshake", dur:10000, html:`
+    <div class="kicker dev fade">Step 4</div>
+    <h2 class="fade">Mesh identity + A2A handshake <span class="filech">agents/mesh.py</span></h2>
+    <div class="sub fade d1">Give agents an Ed25519 identity, then gate delegation on a real
+      challenge → signed response → verify.</div>
+    <div class="topo fade d2" style="height:min(300px,38vh)">
+      <svg class="wires" viewBox="0 0 880 260" preserveAspectRatio="none">
+        <path class="wire trust" d="M420,52 C 300,90 170,90 120,150"/>
+        <path class="wire trust" d="M460,52 C 580,90 710,90 760,150"/>
+      </svg>
+      <div class="node grow" id="n_coord" style="top:0"><div class="ic">🧭</div><div class="nm">Coordinator</div><div class="rl">did:mesh</div></div>
+      <div class="node grow d1" id="n_fin" style="top:150px"><div class="ic">💼</div><div class="nm">Financial</div><div class="rl">did:mesh</div></div>
+      <div class="node grow d1" id="n_res" style="top:150px"><div class="ic">📑</div><div class="nm">Research</div><div class="rl">did:mesh</div></div>
+      <div class="badge pop d4" style="left:50%;top:78px;transform:translateX(-50%)">① challenge →</div>
+      <div class="badge pop d5" style="left:24%;top:110px">② signed nonce ✍</div>
+      <div class="badge pop d6" style="right:24%;top:110px">③ verified ✓ trust 500</div>
+    </div>
+    <div class="steprow"><span class="pill ok fade d7">✓ handshake sequence renders; delegation gated</span></div>`},
+
+  {layer:"dev", lab:"Step 5 · Publish", dur:9000, html:`
+    <div class="kicker dev fade">Step 5</div>
+    <h2 class="fade">Publish to the trust graph <span class="filech">mesh.py</span></h2>
+    <div class="sub fade d1">After a handshake, post the result via the SDK's mesh publisher so the AGT dashboard's
+      <b>trust graph</b> draws a real edge between the two DIDs.</div>
+    ${topo({cp:true,ids:true,trust:true})}
+    <div class="steprow"><span class="pill ok fade d6">✓ trust-graph edges between all three agents</span></div>`},
+
+  {layer:"dev", lab:"Recap", dur:11000, html:`
+    <div class="kicker dev fade">You made it</div>
+    <h2 class="fade">Vanilla → Governed, safely</h2>
+    <div class="checklist">
+      <div class="fade d1"><span class="c">✓</span>Step 0 — SDK + <b>.env</b>, fail-open</div>
+      <div class="fade d2"><span class="c">✓</span>Step 1 — tool calls authorized by the control plane</div>
+      <div class="fade d3"><span class="c">✓</span>Step 2 — agent methods governed</div>
+      <div class="fade d4"><span class="c">✓</span>Step 3 — three distinct mesh identities</div>
+      <div class="fade d5"><span class="c">✓</span>Step 4 — A2A trust handshake before delegation</div>
+      <div class="fade d6"><span class="c">✓</span>Step 5 — handshakes published to the trust graph</div>
+    </div>
+    <div class="sub fade d7" style="margin-top:16px">Flip <b style="color:var(--gold)">AGT_FAIL_OPEN=false</b> and the demo is strict.
+      Full detail in <b>docs/AGT_MIGRATION_GUIDE.md</b>.</div>`},
+];
+
+/* ---------- player ---------- */
+const stage=document.getElementById("stage"), dotsEl=document.getElementById("dots"),
+  lab=document.getElementById("lab"), barfill=document.getElementById("barfill"),
+  layerBadge=document.getElementById("layerBadge");
+let i=0, playing=true, t0=0, raf=null, sceneEls=[];
+
+SCENES.forEach((s,idx)=>{
+  const el=document.createElement("div"); el.className="scene"; el.innerHTML=s.html;
+  stage.appendChild(el); sceneEls.push(el);
+  const d=document.createElement("span"); d.className="dot"; d.title=s.lab;
+  d.onclick=()=>go(idx); dotsEl.appendChild(d);
+});
+
+function render(){
+  sceneEls.forEach((el,idx)=>el.classList.toggle("on",idx===i));
+  document.querySelectorAll(".dot").forEach((d,idx)=>d.classList.toggle("on",idx===i));
+  lab.textContent=`${i+1}/${SCENES.length} · ${SCENES[i].lab}`;
+  const ly=SCENES[i].layer;
+  layerBadge.textContent = ly==="dev" ? "Developer track" : "Concept";
+  layerBadge.className = "layerbadge "+(ly==="dev"?"dev":"concept");
+  // restart CSS animations
+  const cur=sceneEls[i]; cur.querySelectorAll("*").forEach(n=>{
+    const a=n.style.animation; if(getComputedStyle(n).animationName!=="none"){ n.style.animation="none"; void n.offsetWidth; n.style.animation=""; }
+  });
+  t0=performance.now();
+}
+function go(idx){ i=(idx+SCENES.length)%SCENES.length; render(); }
+function next(){ go(i+1); }
+function prev(){ go(i-1); }
+
+function loop(now){
+  if(playing){
+    const el=now-t0, dur=SCENES[i].dur;
+    barfill.style.width=Math.min(100,(el/dur)*100)+"%";
+    if(el>=dur){ if(i===SCENES.length-1){ playing=false; document.getElementById("play").textContent="↻"; } else next(); }
+  }
+  raf=requestAnimationFrame(loop);
+}
+function toggle(){
+  if(i===SCENES.length-1 && !playing){ go(0); playing=true; }
+  else playing=!playing;
+  document.getElementById("play").textContent=playing?"⏸":"▶";
+}
+document.getElementById("play").onclick=toggle;
+document.getElementById("next").onclick=()=>{next();};
+document.getElementById("prev").onclick=()=>{prev();};
+document.addEventListener("keydown",e=>{
+  if(e.code==="Space"){e.preventDefault();toggle();}
+  if(e.code==="ArrowRight")next();
+  if(e.code==="ArrowLeft")prev();
+});
+render(); raf=requestAnimationFrame(loop);
+</script>
+</body>
+</html>
