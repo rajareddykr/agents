@@ -23,6 +23,7 @@ from .agents.financial_agent import FinancialAgent
 from .agents.research_agent import ResearchAgent
 from .mcp.fin_mcp import FinMCP
 from .mcp.news_mcp import NewsMCP
+from . import governance
 
 ROLE = (os.environ.get("AGENT_ROLE") or "fin_agent").strip()
 app = FastAPI(title=f"Agent Worker: {ROLE}")
@@ -42,6 +43,12 @@ class AnalyzeReq(BaseModel):
     session: str
 
 
+@app.on_event("startup")
+async def _register_on_startup():
+    await asyncio.to_thread(governance.authorize, "agent_online", ROLE)
+
+
+
 @app.get("/health")
 async def health() -> dict:
     return {"role": ROLE}
@@ -49,9 +56,22 @@ async def health() -> dict:
 
 @app.get("/whoami")
 async def whoami() -> dict:
-    """Return THIS worker's identity (vanilla: role + name, no DID)."""
-    name = os.environ.get("AGENT_NAME") or ROLE
-    return {"role": ROLE, "name": name}
+    """Return THIS worker's real mesh identity so the coordinator can handshake
+    against the bootstrap DID (Step 5). Fail-open: role+name only if mesh is off."""
+    did = None
+    name = os.environ.get("AGT_AGENT_NAME") or os.environ.get("AGENT_NAME") or ROLE
+    capabilities: list[str] = []
+    try:
+        from agt_sdk import AutoKernel
+        engines = getattr(AutoKernel.instance(), "mesh_engines", None)
+        ident = getattr(engines, "identity", None) if engines else None
+        if ident is not None:
+            did = str(getattr(ident, "did", "") or "") or None
+            name = getattr(ident, "name", name) or name
+            capabilities = list(getattr(ident, "capabilities", []) or [])
+    except Exception:
+        pass
+    return {"role": ROLE, "did": did, "name": name, "capabilities": capabilities}
 
 
 @app.post("/analyze")

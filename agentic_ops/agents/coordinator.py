@@ -62,7 +62,15 @@ class Coordinator(Agent):
 
         await self.think(f"Decompose mission: {mission}", tag="plan")
 
-        # A2A dispatch to specialists in parallel (no handshake in vanilla).
+        fin_ok, res_ok = await asyncio.gather(
+            self.handshake(self.fin_agent),
+            self.handshake(self.res_agent),
+        )
+        if not (fin_ok and res_ok):
+            self._status("IDLE")
+            return {"status": "blocked", "reason": "mesh handshake failed"}
+
+        # A2A dispatch to specialists in parallel (handshake verified above).
         self.send("fin_agent", f"analyze financials for {entity}")
         self.send("res_agent", f"research news & sentiment for {entity}")
 
@@ -70,6 +78,7 @@ class Coordinator(Agent):
             self.fin_agent.analyze(entity),
             self.res_agent.analyze(entity),
         )
+
 
         # Specialists report back.
         self.fin_agent.send("coordinator", "financial findings ready")

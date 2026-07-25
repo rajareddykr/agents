@@ -11,7 +11,7 @@ from typing import Any
 
 from .base import Agent
 from ..mcp.fin_mcp import FinMCP
-
+from .. import governance
 
 class FinancialAgent(Agent):
     node_id = "fin_agent"
@@ -21,6 +21,7 @@ class FinancialAgent(Agent):
         super().__init__(session)
         self.fin_mcp = fin_mcp
 
+    @governance.governed(action="fin_agent.analyze")
     async def analyze(self, entity: str) -> dict[str, Any]:
         self.flow(f"Financial analysis of {entity} started")
         await self.think(f"Plan financial workup for {entity}", tag="plan")

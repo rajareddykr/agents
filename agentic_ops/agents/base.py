@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import random
-
+from . import mesh
 from ..events import BUS, Event, EventType
 
 
@@ -27,6 +27,8 @@ class Agent:
 
     def __init__(self, session: str) -> None:
         self.session = session
+        self.identity = mesh.ensure_identity(self.node_id)  # NEW
+        self.did = str(self.identity.did)  # NEW
 
     def _status(self, status: str) -> None:
         BUS.publish(Event(type=EventType.STATUS, source=self.node_id,
@@ -51,6 +53,52 @@ class Agent:
             session=self.session, message=message,
             data={},
         ))
+
+    async def handshake(self, peer: "Agent") -> bool:
+        """Run a mesh trust handshake with `peer` before delegating (Step 4c).
+
+        Emits three A2A events (challenge -> signed response -> verified/failed)
+        so the dashboard shows the sequence. Returns True on success. Uses only
+        symbols already imported in this module (mesh, BUS, Event, EventType).
+        """
+        peer_id = peer.node_id
+        # A peer with a .url is a RemoteAgent (runs in another process): we hold
+        # no private key for it, so we ATTEST against its real /whoami DID rather
+        # than run the crypto. In-process peers get the full challenge/response.
+        is_remote = getattr(peer, "url", None) is not None
+        peer_did = getattr(peer, "did", None) or str(mesh.ensure_identity(peer_id).did)
+
+        # 1) challenge
+        self.send(peer_id, f"handshake init: {self.node_id} -> {peer_id} (nonce challenge)")
+
+        if is_remote:
+            result = await mesh.attest_handshake(
+                self.did, peer_did,
+                peer_name=getattr(peer, "label", peer_id),
+                capabilities=getattr(peer, "capabilities", None))
+        else:
+            result = await mesh.handshake(self.did, peer_did)
+
+        # 2) signed response
+        BUS.publish(Event(
+            type=EventType.A2A, source=peer_id, target=self.node_id, session=self.session,
+            message=f"handshake response: {peer_id} signed nonce (cap={result.capabilities})",
+            data={"phase": "response", "peer_did": peer_did}))
+
+        # 3) verified / failed
+        if result.verified:
+            BUS.publish(Event(
+                type=EventType.A2A, source=self.node_id, target=peer_id, session=self.session,
+                message=(f"handshake verified: {peer_id} trust={result.trust_score} "
+                         f"level={result.trust_level}"),
+                data={"phase": "verified", "trust_score": result.trust_score}))
+            return True
+
+        BUS.publish(Event(
+            type=EventType.BLOCKED, source=self.node_id, target=peer_id, session=self.session,
+            message=f"handshake FAILED with {peer_id}: {result.rejection_reason}",
+            data={"phase": "failed", "by": "mesh-handshake"}))
+        return False
 
     def flow(self, message: str) -> None:
         BUS.publish(Event(type=EventType.FLOW, source=self.node_id,

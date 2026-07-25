@@ -8,7 +8,7 @@ from typing import Any
 
 from .base import Agent
 from ..mcp.news_mcp import NewsMCP
-
+from .. import governance
 
 class ResearchAgent(Agent):
     node_id = "res_agent"
@@ -18,6 +18,7 @@ class ResearchAgent(Agent):
         super().__init__(session)
         self.news_mcp = news_mcp
 
+    @governance.governed(action="res_agent.analyze")
     async def analyze(self, entity: str) -> dict[str, Any]:
         self.flow(f"Research scan of {entity} started")
         await self.think(f"Plan research scan for {entity}", tag="plan")

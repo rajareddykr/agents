@@ -12,7 +12,7 @@ in the governed build (see docs/AGT_MIGRATION_GUIDE.md, step 3): the
 ``_precheck`` call below is replaced/augmented with ``governance.authorize(...)``.
 """
 from __future__ import annotations
-
+from .. import governance  # new import
 import asyncio
 import random
 from dataclasses import dataclass
@@ -52,14 +52,18 @@ class MCPServer:
                 for t in self._tools.values()]
 
     # --- pre-execution check (the AGT seam) ------------------------------
-    def _precheck(self, action: str, caller: str, kwargs: dict[str, Any]):
-        """Local guardrail check on the tool-call arguments.
 
-        Returns a GuardrailResult. In the governed build, an AGT control-plane
-        authorize() call is added right here (raising AGTBlocked on deny).
-        """
+
+    def _precheck(self, action, caller, kwargs):
+        # existing local guardrail first
         payload = " ".join(str(v) for v in kwargs.values())
-        return guardrails.check(payload)
+        local = guardrails.check(payload)
+        if not local.allowed:
+            return local
+        # NEW: control-plane authorization (raises AGTBlocked on deny)
+        governance.authorize(action, caller, **{k: v for k, v in kwargs.items()
+                                                if isinstance(v, (str, int, float, bool))})
+        return local
 
     async def call(self, tool_name: str, session: str, caller: str,
                    **kwargs: Any) -> dict[str, Any]:

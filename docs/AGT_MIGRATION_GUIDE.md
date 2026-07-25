@@ -19,33 +19,140 @@ move on. Nothing here is speculative — it mirrors the governed reference build
 
 ## Step 0 — Prerequisites
 
-You need a running AGT control plane and the SDK wheels.
+You need a running AGT control plane (with its database + schema), a seeded org
+and operator, and the SDK installed.
 
-1. **Control plane up** (local, e.g. `http://localhost:20355`, org `demodevelop`).
-2. **Install the SDK** into your venv. The mesh features live behind extras:
+### 0a. Database + schema (`agents_gov`)
 
-   ```bash
-   # from your local SDK checkout / wheelhouse
-   pip install -e path/to/agent-os-sdk[mesh,bootstrap]
-   # (avoid [all] — it pulls framework adapters that pin Python <3.14)
-   ```
+The control plane **never runs `CREATE SCHEMA` itself** — it pins the connection's
+`search_path` to the configured schema and *verifies* it exists on startup. If
+the schema is missing you get, during migrations:
 
-3. **Add AGT settings to `.env`:**
+```
+asyncpg.exceptions.InvalidSchemaNameError: no schema has been selected to create in
+[SQL: CREATE TABLE alembic_version ...]
+```
 
-   ```
-   AGT_CP_URL=http://localhost:20355
-   AGT_ORG_CODE=demodevelop
-   AGT_BOOTSTRAP_TOKEN=agt_boot_...        # a valid token from your CP
-   AGT_GOVERNANCE_ENABLED=true
-   AGT_FAIL_OPEN=true                      # keep true during migration
-   AGT_HEARTBEAT_SECONDS=10
-   ```
+So after (re)creating the database, create the schema **on the same Postgres the
+CP connects to** — connect as a superuser or the `agt` role to
+`agt_control_plane` and run:
 
-4. **Extend `config.py`** to surface these (optional but tidy) — or just read
-   them from `os.environ` inside the governance module in Step 1.
+```sql
+CREATE SCHEMA IF NOT EXISTS agents_gov AUTHORIZATION agt;
+GRANT ALL ON SCHEMA agents_gov TO agt;
+ALTER ROLE agt IN DATABASE agt_control_plane SET search_path = agents_gov, public;
+```
+
+> **Port gotcha:** the CP connects via `DATABASE_URL=...@host.docker.internal:5432`
+> but the compose file may also expose `PG_PORT=5433`. Create the schema on the
+> instance the CP actually reaches (from the host that's `localhost:5432`, **not**
+> `5433`). Confirm with `SELECT current_database(), inet_server_port();`.
+
+### 0b. Seed the org + operator (`demodevelop` / `demoadmin`)
+
+The CP seeds a default org and a `superadmin` user on startup from env vars. Set
+these so you get exactly org `demodevelop` and user `demoadmin` / `changeme`:
+
+```dotenv
+# CP .env (infra/.env)
+DEFAULT_ORG_SLUG=demodevelop
+DEFAULT_ORG_NAME=Demo Develop
+SEED_ADMIN_USERNAME=demoadmin
+SEED_ADMIN_PASSWORD=changeme
+SEED_ADMIN_EMAIL=demoadmin@agt.local
+```
+
+Restart the CP (fresh DB → migrates, then seeds). Verify:
+
+```sql
+SELECT slug FROM agents_gov.organisations WHERE slug='demodevelop';
+SELECT username, role FROM agents_gov.users WHERE username='demoadmin';
+```
+
+> The seed is idempotent and only fires when the org/user are **absent** — so do
+> it on a fresh DB. Don't use `python -m app.cli.tenant onboard` for this: its
+> `local` auth-mode auto-generates a one-time password (you can't pin `changeme`)
+> and uses the admin email as the username.
+
+### 0c. Install the SDK
+
+```bash
+# from your local SDK checkout / wheelhouse
+pip install -e path/to/agent-os-sdk[mesh,bootstrap]
+# (avoid [all] — it pulls framework adapters that pin Python <3.14)
+```
+
+### 0d. Add AGT settings to the vanilla app's `.env`
+
+```dotenv
+AGT_CP_URL=http://localhost:20355
+AGT_ORG_CODE=demodevelop
+AGT_GOVERNANCE_ENABLED=true
+AGT_FAIL_OPEN=true                      # keep true during migration
+AGT_HEARTBEAT_SECONDS=10
+# AGT_BOOTSTRAP_TOKEN / AGT_CP_TOKEN / AGT_AGENT_ID are set in Step 0.5
+```
 
 **Checkpoint:** `python smoke_test.py` still passes (you haven't wired anything
 yet).
+
+---
+
+## Step 0.5 — Register the agent (one-time) ⚠ read before Step 1
+
+Bootstrap tokens are **single-use**. Consuming one registers the agent and mints
+a **long-lived `api_token`**; after that you drop the bootstrap token and run on
+the long-lived credential. Leaving `AGT_BOOTSTRAP_TOKEN` set on every run is the
+#1 cause of the `401 Unauthorized` on `/policies/bundle/resolve` — the second run
+tries to re-consume a spent token.
+
+### 0.5a. Mint a fresh bootstrap token (as `demoadmin`)
+
+```powershell
+$cp = "http://localhost:20355"
+$login = Invoke-RestMethod "$cp/api/v1/auth/login" -Method Post -ContentType application/json `
+  -Body '{"username":"demoadmin","password":"changeme"}'
+$tok = $login.data.access_token; if (-not $tok) { $tok = $login.access_token }
+
+$boot = Invoke-RestMethod "$cp/api/v1/orgs/demodevelop/agents/bootstrap-tokens" -Method Post `
+  -Headers @{ Authorization = "Bearer $tok" } -ContentType application/json `
+  -Body '{"agent_type":"langgraph-agent","ttl_hours":720,"note":"vanilla migration"}'
+$boot.data.token          # -> agt_boot_...  (shown once)
+```
+
+Put it in `.env`: `AGT_BOOTSTRAP_TOKEN=agt_boot_...`
+
+### 0.5b. Consume it once with `register_once.py`
+
+The project ships `register_once.py` (calls `agt_sdk._bootstrap.exchange(...)`).
+Run it once:
+
+```bash
+python register_once.py
+# => REGISTERED ✓  DID: did:mesh:...   api_token: agt_...
+```
+
+### 0.5c. Switch to the long-lived credential
+
+Paste the printed values into `.env` and **remove the (now-spent) bootstrap
+token**:
+
+```dotenv
+AGT_AGENT_ID=did:mesh:...       # printed DID
+AGT_CP_TOKEN=agt_...            # printed api_token
+# AGT_BOOTSTRAP_TOKEN=          <- delete / comment out
+```
+
+Now every run authenticates with `AGT_CP_TOKEN` (no re-consume, no 401), and the
+DID shows in the dashboard's **Agent Registry**. This is choice 2 in the SDK's
+own restart contract.
+
+> If `register_once.py` reports `api_token: (none)`, your CP predates IMPL-024.5 —
+> mint an agent API token via the operator API and use that as `AGT_CP_TOKEN`.
+> `AGT_CP_TOKEN` covers everything Steps 1–3 need (policy resolve, decision ingest,
+> heartbeat — all header auth). The Ed25519 signing key only matters for the Step 4
+> handshake; at that point re-run `register_once.py` with a fresh token so the
+> process holds the private key.
 
 ---
 
@@ -216,16 +323,52 @@ os.environ["AGT_AGENT_ID"]   = _id
 
 ### 3b. Register on startup
 
-Add a one-time `agent_online` authorize in each process's FastAPI `startup`
-(`server.py` and `agent_service.py`), so the process registers in the mesh.
+Add a one-time `agent_online` authorize in each process's FastAPI `startup` so
+the process announces itself to the control plane at boot (forces the SDK to warm
+up under *this* process's identity, and writes a liveness decision so the agent
+appears in the Registry before any mission runs).
+
+`server.py` (Coordinator process):
+
+```python
+import asyncio
+from . import governance
+
+@app.on_event("startup")
+async def _register_on_startup():
+    # coordinator process announces itself; fail-open, non-fatal
+    await asyncio.to_thread(governance.authorize, "agent_online", "coordinator")
+```
+
+`agent_service.py` (worker process — `ROLE` is `fin_agent` / `res_agent`):
+
+```python
+import asyncio
+from . import governance
+
+@app.on_event("startup")
+async def _register_on_startup():
+    await asyncio.to_thread(governance.authorize, "agent_online", ROLE)
+```
+
+Wrap it in `asyncio.to_thread` (the `authorize` call is sync + does network) and
+rely on fail-open so an unreachable CP never blocks startup.
 
 ### 3c. `.env` — one token per agent
 
-```
-AGT_COORDINATOR_TOKEN=agt_boot_...
-AGT_FIN_AGENT_TOKEN=agt_boot_...
-AGT_RES_AGENT_TOKEN=agt_boot_...
-```
+Each agent process needs its **own** identity. Two ways:
+
+* **Per-agent bootstrap tokens** (mint three via Step 0.5a, one per role):
+
+  ```dotenv
+  AGT_COORDINATOR_TOKEN=agt_boot_...
+  AGT_FIN_AGENT_TOKEN=agt_boot_...
+  AGT_RES_AGENT_TOKEN=agt_boot_...
+  ```
+
+* **Or** register each role once with `register_once.py` (set `AGENT_ROLE` first)
+  and store a per-role `AGT_CP_TOKEN` + `AGT_AGENT_ID`. Same single-use rule as
+  Step 0.5 — one consume per role, then run on the long-lived token.
 
 **Test:** `python run.py` (distributed). **Expected:** three agents in the AGT
 Agent Registry with distinct DIDs; each tool decision attributed to the right one.
@@ -343,12 +486,25 @@ three real agent DIDs.
 
 | Step | Adds | Files touched | Self-test after |
 |---|---|---|---|
-| 0 | SDK + `.env` | `.env`, (`config.py`) | smoke still PASS |
+| 0 | DB/schema, org+user seed, SDK, `.env` | Postgres, CP `.env`, app `.env` | CP starts; smoke still PASS |
+| 0.5 | one-time agent registration | `register_once.py`, `.env` | `REGISTERED ✓`; DID in Agent Registry |
 | 1 | tool authorization | `governance.py` (new), `mcp/base.py` | smoke PASS; decisions in CP |
 | 2 | method governance | `governance.py`, `financial_agent.py`, `research_agent.py` | smoke PASS; deny → blocked finding |
-| 3 | per-agent identities | `governance.py`, `server.py`, `agent_service.py`, `.env` | 3 agents in registry |
+| 3 | per-agent identities + startup register | `governance.py`, `server.py`, `agent_service.py`, `.env` | 3 agents in registry |
 | 4 | mesh id + handshake | `agents/mesh.py` (new), `agents/base.py`, `agents/coordinator.py` | handshake events; update smoke A2A assert |
 | 5 | CP publishing | `agents/mesh.py`, `agent_service.py`, `orchestrator.py` | trust-graph edges |
+
+## Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `401 Unauthorized` on `/policies/bundle/resolve` at startup | No / stale / already-consumed credential; SDK fails open and continues | Do Step 0.5: register once, then run on `AGT_CP_TOKEN` + `AGT_AGENT_ID` (remove `AGT_BOOTSTRAP_TOKEN`) |
+| `BootstrapAlreadyConsumed` | Re-consuming a single-use token (bootstrap token left set across runs) | Mint a fresh token (0.5a) **or** switch to the long-lived `AGT_CP_TOKEN` (0.5c) |
+| `no schema has been selected to create in` (CP won't start) | `agents_gov` schema missing on the DB the CP connects to | Step 0a — create the schema on the **right** instance/port |
+| CP connects but schema still "missing" | Created the schema on `:5433` but CP uses `:5432` (or vice-versa) | Verify with `SELECT inet_server_port()`; create on the CP's instance |
+| Login `401`/`404` when minting the token | Wrong route for your build | Open `http://localhost:20355/docs` and confirm the exact paths |
+| All agents show as "Coordinator" in the Registry | One process registered multiple roles | Register **only** the process's own role (Step 3 pitfall) |
+| smoke test's "exactly 4 A2A" check fails after Step 4 | Handshake now emits extra A2A events | Expected — loosen the assertion to `>= 4` |
 
 ## Tips
 

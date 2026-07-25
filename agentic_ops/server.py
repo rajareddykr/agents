@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from .events import BUS
 from .orchestrator import Orchestrator, NODES
 from . import config
+from . import governance
 
 app = FastAPI(title="Agentic AI + MCP Agent Ops (vanilla)")
 orchestrator = Orchestrator()
@@ -27,6 +28,11 @@ _DASHBOARD = (Path(__file__).parent / "dashboard.html").read_text(encoding="utf-
 class Mission(BaseModel):
     mission: str
 
+
+@app.on_event("startup")
+async def _register_on_startup():
+    # coordinator process announces itself; fail-open, non-fatal
+    await asyncio.to_thread(governance.authorize, "agent_online", "coordinator")
 
 @app.get("/", response_class=HTMLResponse)
 async def index() -> str:
@@ -44,6 +50,14 @@ async def topology() -> dict:
             "news_mcp": orchestrator.news_mcp.list_tools(),
         },
     }
+
+
+@app.get("/api/mesh")
+async def mesh_status() -> dict:
+    """Is THIS (coordinator) process mesh-wired? Handshakes only publish to the
+    CP when mesh_wired is true. did:mesh:... = good; null = no wiring."""
+    from .agents import mesh
+    return mesh.mesh_status()
 
 
 @app.post("/api/mission")

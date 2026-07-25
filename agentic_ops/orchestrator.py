@@ -62,9 +62,11 @@ def _post_json(url: str, payload: dict, timeout: int = 120) -> dict:
 class RemoteAgent:
     """Proxy for an agent running in a separate process (HTTP dispatch).
 
-    Plain vanilla: just the worker URL. No DID discovery, no capabilities
-    handshake. ``analyze()`` POSTs the task and replays the worker's events
-    onto the local bus so the dashboard shows the full run.
+    On construction it fetches ``GET {url}/whoami`` (Step 5) to discover the
+    worker's real ``did:mesh`` + capabilities, so the coordinator can attest a
+    handshake against the peer's authoritative identity. Presence of ``.url``
+    marks this peer as remote, so ``base.Agent.handshake`` uses the attest path
+    (it can't run the crypto locally — the worker holds the private key).
     """
 
     def __init__(self, node_id: str, label: str, url: str, session: str) -> None:
@@ -72,6 +74,18 @@ class RemoteAgent:
         self.label = label
         self.url = url
         self.session = session
+        self.did: str | None = None
+        self.capabilities: list[str] = []
+        try:
+            req = urllib.request.Request(f"{url}/whoami", method="GET")
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                info = json.loads(resp.read().decode("utf-8"))
+            self.did = info.get("did") or None
+            self.capabilities = list(info.get("capabilities") or [])
+            if info.get("name"):
+                self.label = info["name"]
+        except Exception:  # noqa: BLE001 — worker may not be up yet
+            pass
 
     def send(self, target: str, message: str) -> None:
         BUS.publish(Event(type=EventType.A2A, source=self.node_id,
