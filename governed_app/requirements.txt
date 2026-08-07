@@ -1,0 +1,7 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2
+# agt-sdk (and its extras) are installed from the wheels shipped with this
+# repo. From the repo root:
+#   pip install --no-index --find-links ../agt-sdk/wheels \
+#       'agt-sdk[mesh,bootstrap]'

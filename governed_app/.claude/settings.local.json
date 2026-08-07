@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"from agt_sdk._config import SdkConfig; import os; print\\('agt-sdk available'\\); print\\('AGT_CP_URL from env:', os.environ.get\\('AGT_CP_URL'\\)\\)\")",
+      "Bash(python -c ' *)",
+      "Bash(python *)",
+      "Bash(curl -s http://127.0.0.1:8100/whoami)",
+      "Read(//tmp/**)",
+      "Bash(powershell *)",
+      "Bash(curl -s -o /tmp/r.json -w 'HTTP %{http_code}\\\\n' -X POST -H 'X-AGT-Token: agt_S95TYqCJBcHLru637-rMRJZHm42-oZi7cPNMzkT0cNo' -H 'Content-Type: application/json' https://api.sqa1.appsoc.com/aisec-agents-gov/api/v1/orgs/demodevelop/agents/bootstrap)",
+      "Bash(curl -s -o /tmp/r.json -w 'HTTP %{http_code}\\\\n' -X POST -H 'Authorization: Bearer agt_S95TYqCJBcHLru637-rMRJZHm42-oZi7cPNMzkT0cNo' -H 'Content-Type: application/json' https://api.sqa1.appsoc.com/aisec-agents-gov/api/v1/orgs/demodevelop/agents/bootstrap)",
+      "Bash(curl -s -o /tmp/r.json -w 'HTTP %{http_code}\\\\n' -H 'X-AGT-Token: agt_S95TYqCJBcHLru637-rMRJZHm42-oZi7cPNMzkT0cNo' https://api.sqa1.appsoc.com/aisec-agents-gov/api/v1/orgs/demodevelop/agents)",
+      "Bash(curl -s -w '\\\\nHTTP %{http_code}\\\\n' -H 'X-appsoc-api-key: 985a02ea046d48e9971c1cfe17544819145242504a014f53a58a9be74254d908' -H 'Accept: application/json' https://api.sqa1.appsoc.com/aisec-agents-gov/api/v1/orgs/demodevelop/agents)",
+      "Bash(curl -s -o /tmp/r.json -w 'HTTP %{http_code}\\\\n' -X POST -H 'X-AGT-Bootstrap-Token: agt_AdmPr3gj2tgLWlDQBTlhggmOQERUNOYd0OHk2iE4VHw' -H 'X-appsoc-api-key: 985a02ea046d48e9971c1cfe17544819145242504a014f53a58a9be74254d908' -H 'Content-Type: application/json' -H 'Accept: application/json' -d '{\"name\":\"probe\",\"agent_type\":\"test\"}' https://api.sqa1.appsoc.com/aisec-agents-gov/api/v1/orgs/demodevelop/agents/bootstrap)",
+      "Bash(curl -s -o /tmp/r.json -w 'HTTP %{http_code}\\\\n' -X POST -H 'X-AGT-Bootstrap-Token: agt_AdmPr3gj2tgLWlDQBTlhggmOQERUNOYd0OHk2iE4VHw' -H 'X-appsoc-api-key: 985a02ea046d48e9971c1cfe17544819145242504a014f53a58a9be74254d908' -H 'Content-Type: application/json' -H 'Accept: application/json' -d '{\"name\":\"probe\",\"agent_type\":\"test\"}' https://api.sqa1.appsoc.com/aisec-agents-gov/api/v1/orgs/dev-mode.sqa1/agents/bootstrap)",
+      "Bash(curl -s -o /tmp/r.json -w 'HTTP %{http_code}\\\\n' -H 'X-AGT-Token: agt_AdmPr3gj2tgLWlDQBTlhggmOQERUNOYd0OHk2iE4VHw' -H 'X-appsoc-api-key: 985a02ea046d48e9971c1cfe17544819145242504a014f53a58a9be74254d908' -H 'Accept: application/json' https://api.sqa1.appsoc.com/aisec-agents-gov/api/v1/orgs/demodevelop/agents/me)",
+      "Bash(curl -s --max-time 3 http://127.0.0.1:__TRACKED_VAR__/whoami)",
+      "Bash(curl -s --max-time 5 http://127.0.0.1:__TRACKED_VAR__/whoami)",
+      "Bash(curl -s -o /tmp/r.json -w 'HTTP %{http_code}\\\\n' -H 'X-AGT-Token: agt_ykRQPilcpsqw4iHR8aFb5V9pzvlXlFI9GnlTsCrtitI' -H 'X-appsoc-api-key: 985a02ea046d48e9971c1cfe17544819145242504a014f53a58a9be74254d908' -H 'Accept: application/json' https://api.sqa1.appsoc.com/aisec-agents-gov/api/v1/orgs/demodevelop/agents/me)",
+      "Bash(curl -s https://api.sqa1.appsoc.com/aisec-agents-gov/api/v1/orgs/demodevelop/agents -H 'X-appsoc-api-key: 985a02ea046d48e9971c1cfe17544819145242504a014f53a58a9be74254d908' -H 'Accept: application/json')",
+      "Bash(curl -s --max-time 2 http://127.0.0.1:__TRACKED_VAR__/health)"
+    ]
+  }
+}
