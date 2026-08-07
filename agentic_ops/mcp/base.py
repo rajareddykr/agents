@@ -55,15 +55,24 @@ class MCPServer:
 
 
     def _precheck(self, action, caller, kwargs):
-        # existing local guardrail first
+        # Local regex guardrail first — fast, offline, deterministic.
         payload = " ".join(str(v) for v in kwargs.values())
         local = guardrails.check(payload)
         if not local.allowed:
-            return local
-        # NEW: control-plane authorization (raises AGTBlocked on deny)
-        governance.authorize(action, caller, **{k: v for k, v in kwargs.items()
-                                                if isinstance(v, (str, int, float, bool))})
-        return local
+            return local, "local-guardrail"
+        # Control-plane authorization. Convert AGTBlocked into a GuardrailResult
+        # so ``call`` treats it uniformly with the local block — same BLOCKED
+        # event, same graceful return, dashboard shows source "cp-policy".
+        try:
+            governance.authorize(action, caller, **{k: v for k, v in kwargs.items()
+                                                    if isinstance(v, (str, int, float, bool))})
+        except governance.AGTBlocked as e:
+            return guardrails.GuardrailResult(
+                allowed=False,
+                rule=getattr(e, "matched_rule", None) or getattr(e, "policy_name", None) or "cp-policy",
+                reason=getattr(e, "reason", None) or str(e),
+            ), "cp-policy"
+        return local, "local-guardrail"
 
     async def call(self, tool_name: str, session: str, caller: str,
                    **kwargs: Any) -> dict[str, Any]:
@@ -84,20 +93,20 @@ class MCPServer:
             message=f"guardrail check: {action}",
             data={"action": action},
         ))
-        verdict = self._precheck(action, caller, kwargs)
+        verdict, source = self._precheck(action, caller, kwargs)
         if not verdict.allowed:
             BUS.publish(Event(
                 type=EventType.BLOCKED, source=self.node_id, target=caller,
                 session=session,
                 message=f"BLOCKED {action}: {verdict.reason}",
                 data={"action": action, "reason": verdict.reason,
-                      "rule": verdict.rule, "by": "local-guardrail"},
+                      "rule": verdict.rule, "by": source},
             ))
             BUS.publish(Event(type=EventType.STATUS, source=self.node_id,
                               session=session, message="IDLE",
                               data={"status": "IDLE"}))
             return {"blocked": True, "action": action, "reason": verdict.reason,
-                    "rule": verdict.rule, "source": "local-guardrail"}
+                    "rule": verdict.rule, "source": source}
 
         BUS.publish(Event(type=EventType.STATUS, source=self.node_id,
                           session=session, message="RUNNING",

@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python *)",
+      "Bash(curl -s http://127.0.0.1:8100/whoami)",
+      "Bash(break)",
+      "Bash(curl -s -X POST http://127.0.0.1:8100/mission -H 'content-type: application/json' -d '{\"mission\":\"Analyze the market trends for HDFC bank\"}')",
+      "Bash(curl -s -X POST http://127.0.0.1:8100/mission -H 'content-type: application/json' -d '{\"mission\":\"Analyze the market trends for SBI\"}')",
+      "Bash(curl -s \"http://127.0.0.1:8100/events\")",
+      "Bash(taskkill //F //IM python.exe)",
+      "Bash(taskkill //F //IM pythonw.exe)",
+      "Bash(tasklist //FI \"IMAGENAME eq python.exe\")",
+      "Bash(tasklist //FI \"IMAGENAME eq pythonw.exe\")"
+    ]
+  }
+}

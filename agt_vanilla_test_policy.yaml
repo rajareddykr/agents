@@ -1,17 +1,27 @@
 # ─────────────────────────────────────────────────────────────────────────────
 #  AGT test policy  —  agentic-mcp-ops-vanilla
 #
-#  Governs the migrated multi-agent app (Coordinator + Financial + Research
-#  agents calling FIN MCP / NEWS MCP). Load it from the dashboard to see benign
-#  calls flip from ALLOW to DENY once the policy is Active — a clean before/after.
+#  Governs the multi-agent app (Coordinator + Financial + Research agents
+#  calling FIN MCP / NEWS MCP). Upload from the dashboard: Governance →
+#  Policies → New Policy → paste this whole file → Save → Publish (status =
+#  Active) → bind to org "demodevelop" or to the three agents.
 #
-#  HOW TO LOAD
-#    1. Dashboard → Governance → Policies → New Policy.
-#    2. Paste this whole file, Save, then set status = Active (Publish).
-#    3. (If your build scopes policies) bind/attach it to org "demodevelop"
-#       or to the agents fin_agent / res_agent; org-wide is fine for a demo.
-#    4. Run a mission (e.g. "Analyze the market trends for HDFC bank").
-#       Agents pull the bundle on start and each TTL, so decisions flip live.
+#  RULE ORDER
+#    The SDK's rule engine sorts by `priority` DESCENDING, first match wins.
+#    DENY rules MUST have a higher priority than ALLOW rules — otherwise a
+#    permissive rule fires first and short-circuits the deny.
+#
+#        DENY  priority 300  ┐
+#        ALLOW priority 100  ┘  (deny > allow)
+#
+#  CONTENT MATCHING — why `operator: matches` instead of `contains`
+#    The kernel builds `ctx["params"]` as the raw params DICT
+#    (e.g. {"entity": "SBI"}). The CONTAINS operator does `target in ctx_value`
+#    — on a dict that checks KEYS, not values, so "sbi" in {"entity":"SBI"} is
+#    False. The MATCHES operator runs `regex.search(str(ctx_value))`, so the
+#    dict is stringified and a substring is found. Use `(?i)` for case-
+#    insensitive. Contains still works on string-typed fields — see
+#    `field: action`.
 #
 #  GOVERNED ACTIONS IN THIS APP  (action = "<node_id>.<name>")
 #    Agent actions .......... fin_agent.analyze,  res_agent.analyze
@@ -20,45 +30,80 @@
 #    NEWS MCP tools ......... news_mcp.search_news,  news_mcp.get_sentiment
 #    Lifecycle .............. agent_online   (startup registration)
 #
-#  FOUR RULES  (2 allow, 2 block), all mapped to real actions above:
-#    • ALLOW  fin_mcp.get_quote, news_mcp.search_news, news_mcp.get_sentiment
-#    • ALLOW  fin_agent.analyze, res_agent.analyze         (the agent actions)
-#    • BLOCK  fin_mcp.get_fundamentals   .......... demonstrates a tool-level flip
-#    • BLOCK  any args containing "confidential" .. content-pattern block
-#
-#  WHY THESE TARGETS
-#    fin_mcp.get_fundamentals and the "confidential" pattern are NOT in the SDK
-#    built-in defaults and NOT in the app's local regex guardrail, so a benign
-#    call is ALLOWED with no policy and flips to DENY only once THIS policy is
-#    Active — a clean, attributable before/after that is clearly the control
-#    plane (not the local guardrail, which already blocks insider/pump/SSN text).
-#
 #  ENFORCEMENT NOTE
-#    The SDK enforces the CP-distributed policy through the keys under
-#    `defaults:` (blocked_actions / blocked_patterns / require_approval). The
-#    human-readable `rules:` block states the same intent for the UI and
-#    reviewers. Keep the two in sync — `defaults:` is what actually blocks.
+#    Both engines run: (1) the rule engine over `rules[]` and (2) the legacy
+#    list model over `defaults.blocked_actions` / `defaults.blocked_patterns`.
+#    Either can deny. `defaults.blocked_patterns` case-insensitively substring-
+#    matches the JSON-serialised params, so patterns listed there catch the
+#    same substrings the `params matches (?i)…` rules do — belt and braces.
 # ─────────────────────────────────────────────────────────────────────────────
 
 version: "1.0"
 name: agt-vanilla-test-policy
 description: >-
-  Test governance policy for the agentic-mcp-ops-vanilla multi-agent app. Allows
-  safe market/news reads and the specialist agent actions; blocks direct
-  fundamentals pulls and any request referencing "confidential" content.
+  Test governance policy for the agentic-mcp-ops-vanilla multi-agent app.
+  Denies direct fundamentals pulls and requests referencing SBI, ICICI,
+  confidential or restricted content; allows the safe reads and specialist
+  agent actions.
 
 rules:
-  # ── ALLOW — safe MCP reads ───────────────────────────────────────────────────
+  # ── DENY rules (priority 300 — evaluated FIRST) ─────────────────────────────
+  - name: block-fundamentals
+    condition:
+      field: action
+      operator: eq
+      value: fin_mcp.get_fundamentals
+    action: deny
+    priority: 300
+    message: "Direct fundamentals pulls are blocked by policy — use quote/trend instead."
+
+  - name: block-sbi
+    condition:
+      field: params
+      operator: matches
+      value: "(?i)sbi"
+    action: deny
+    priority: 300
+    message: "Requests mentioning 'SBI' are blocked by policy."
+
+  - name: block-icici
+    condition:
+      field: params
+      operator: matches
+      value: "(?i)icici"
+    action: deny
+    priority: 300
+    message: "Requests mentioning 'ICICI' are blocked by policy."
+
+  - name: block-confidential-content
+    condition:
+      field: params
+      operator: matches
+      value: "(?i)confidential"
+    action: deny
+    priority: 300
+    message: "Requests referencing 'confidential' content are blocked by policy."
+
+  - name: block-restricted-content
+    condition:
+      field: params
+      operator: matches
+      value: "(?i)restricted"
+    action: deny
+    priority: 300
+    message: "Requests referencing 'restricted' content are blocked by policy."
+
+  # ── ALLOW rules (priority 100 — evaluated AFTER denies) ─────────────────────
   - name: allow-safe-reads
     condition:
       field: action
       operator: in
-      value: [fin_mcp.get_quote, news_mcp.search_news, news_mcp.get_sentiment]
+      value: [fin_mcp.get_quote, fin_mcp.get_price_trend,
+              news_mcp.search_news, news_mcp.get_sentiment]
     action: allow
     priority: 100
-    message: "Quotes, news search and sentiment are allowed."
+    message: "Quotes, price trends, news search and sentiment are allowed."
 
-  # ── ALLOW — the specialist agent actions ─────────────────────────────────────
   - name: allow-agent-actions
     condition:
       field: action
@@ -68,43 +113,16 @@ rules:
     priority: 100
     message: "Financial and Research agent analyses are allowed."
 
-  # ── BLOCK 1 — tool/action ────────────────────────────────────────────────────
-  - name: block-fundamentals
-    condition:
-      field: action
-      operator: eq
-      value: fin_mcp.get_fundamentals
-    action: deny
-    priority: 200
-    message: "Direct fundamentals pulls are blocked by policy — use quote/trend instead."
-
-  # ── BLOCK 2 — content pattern ────────────────────────────────────────────────
-  - name: block-confidential-content
-    condition:
-      field: params
-      operator: contains
-      value: confidential
-    action: deny
-    priority: 200
-    message: "Requests referencing 'confidential' content are blocked by policy."
-
-  # ── BLOCK 3 — content pattern ────────────────────────────────────────────────
-  - name: block-restricted-content
-    condition:
-      field: params
-      operator: contains
-      value: restricted
-    action: deny
-    priority: 200
-    message: "Requests referencing 'restricted' content are blocked by policy."
-
-# These are the keys the SDK actually enforces when it pulls this policy from the
-# control plane. Anything NOT listed here stays allowed (default action).
+# Belt-and-braces list model. The SDK's legacy path substring-matches these
+# against the JSON-serialised params (case-insensitive), so anything listed
+# here is denied even if the rules engine were to be turned off.
 defaults:
   action: allow
   blocked_actions:
     - fin_mcp.get_fundamentals
   blocked_patterns:
+    - sbi
+    - icici
     - confidential
     - restricted
   require_approval: []

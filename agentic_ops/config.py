@@ -29,10 +29,12 @@ def _load_dotenv() -> None:
         if val and val[0] not in "\"'" and " #" in val:
             val = val.split(" #", 1)[0].strip()
         val = val.strip('"').strip("'")
-        if val:
-            os.environ[key] = val
-        else:
-            os.environ.setdefault(key, val)
+        # Standard dotenv precedence: process env wins over .env. Overwriting
+        # here would let the file clobber values set by the launcher, by
+        # tests, or by ``AGENT_ROLE`` inheritance from ``run.py`` — the same
+        # bug that let ``AGT_GOVERNANCE_ENABLED=false`` in tests get silently
+        # reverted to ``true`` from .env.
+        os.environ.setdefault(key, val)
 
 
 _load_dotenv()

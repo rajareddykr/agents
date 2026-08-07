@@ -1,8 +1,11 @@
 """FastAPI app: serves the dashboard, streams events over WebSocket,
 and kicks off missions.
 
-VANILLA build: no governance startup hook. The topology endpoint reports the
-data mode (mock/live) and run mode (in-process/distributed) only.
+Governance/identity is wired via ``governance``: on startup this process
+warms the SDK (bootstrap → IMPL-067 attach → mesh wiring) so the coordinator
+holds its escrow-recovered ``did:mesh:...`` identity before the first mission.
+The topology endpoint reports the data mode (mock/live) and run mode
+(in-process/distributed).
 """
 from __future__ import annotations
 
@@ -31,8 +34,17 @@ class Mission(BaseModel):
 
 @app.on_event("startup")
 async def _register_on_startup():
-    # coordinator process announces itself; fail-open, non-fatal
-    await asyncio.to_thread(governance.authorize, "agent_online", "coordinator")
+    # Warm the SDK — bootstrap → attach → mesh wiring runs here so the
+    # coordinator holds its escrow-recovered identity before the first mission
+    # (RemoteAgent handshakes and A2A publishes all need it). Fail-open.
+    def _warm() -> None:
+        try:
+            from agt_sdk import AutoKernel
+            AutoKernel.instance()
+        except Exception:  # noqa: BLE001 — SDK may be disabled / unavailable
+            pass
+        governance.authorize("agent_online", "coordinator")
+    await asyncio.to_thread(_warm)
 
 @app.get("/", response_class=HTMLResponse)
 async def index() -> str:

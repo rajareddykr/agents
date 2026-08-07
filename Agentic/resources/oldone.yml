@@ -1,0 +1,93 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  AGT policy  —  customer agents (Agentic)   [LOCAL control plane]
+#
+#  IMPORTANT — how THIS app is governed (read before editing)
+#  ----------------------------------------------------------
+#  The agents wrap their dispatchers with COARSE governed actions:
+#      run_tool_execution   — Coordinator      (agent_system.py)   [A2A dispatch]
+#      finagent-tool-call    — Financial agent  (financial_server.py)
+#      research-tool-call     — Research agent   (research_server.py)
+#
+#  The REAL function name (e.g. get_financial_metrics) and its arguments
+#  (e.g. {"symbol":"SBI"}) travel INSIDE the args of run_tool_execution — NOT in
+#  the action name. Example decision context the CP receives:
+#      { "tool": "run_tool_execution",
+#        "args_preview": "{\"tool_name\":\"get_financial_metrics\",
+#                          \"args\":{\"symbol\":\"SBI\"}}" }
+#
+#  Therefore:
+#    • To allow/deny a whole AGENT/dispatcher -> use `blocked_actions` (matches the
+#      coarse action:  run_tool_execution / finagent-tool-call / research-tool-call).
+#    • To allow/deny a specific FUNCTION or value -> use `blocked_patterns`, which
+#      the SDK scans against the request ARGS. This is the ONLY reliable per-function
+#      control here, because the function name is in the args, not the action.
+#
+#  `defaults:` is what the SDK actually enforces. The `rules:` block mirrors intent
+#  for the dashboard/reviewers — keep the two in sync.
+#
+#  HOW TO VERIFY (before/after)
+#    As written below, get_financial_metrics is BLOCKED. Run
+#    "Get financial metrics for SBI" -> that call flips to DENY in Decision
+#    Explorer, while get_stock_price / search_web / get_news stay ALLOW.
+#    Remove get_financial_metrics from blocked_patterns to re-allow it.
+#
+#  BINDING (required for enforcement)
+#    Publish (status = Active) AND bind this policy to a scope that resolves for
+#    the agents — org-wide `demodevelop` is simplest. If a decision still shows no
+#    policy attribution, the binding scope doesn't match the agent identity.
+# ─────────────────────────────────────────────────────────────────────────────
+
+version: "1.0"
+name: agt-customer-policy
+description: >-
+  Governance for the customer's Coordinator + Financial + Research agents on the
+  local AGT control plane. Per-function control via blocked_patterns (the function
+  name lives in the args). Blocks get_financial_metrics and confidential/restricted
+  content; everything else is allowed.
+
+rules:
+  # ── BLOCK — the coordinator dispatch action (this is what you asked for) ──────
+  # run_tool_execution wraps ALL coordinator tool dispatch (incl. A2A), so denying
+  # it blocks the whole coordinator flow.
+  - name: block-run-tool-execution
+    condition: {field: action, operator: eq, value: run_tool_execution}
+    action: deny
+    priority: 300
+    message: "Action run_tool_execution is blocked by policy."
+
+  # ── ALLOW — the sub-agent dispatch actions ───────────────────────────────────
+  - name: allow-financial-tool-call
+    condition: {field: action, operator: eq, value: finagent-tool-call}
+    action: allow
+    priority: 100
+    message: "Financial agent tool calls are allowed."
+
+  - name: allow-research-tool-call
+    condition: {field: action, operator: eq, value: research-tool-call}
+    action: allow
+    priority: 100
+    message: "Research agent tool calls are allowed."
+
+  # ── BLOCK — content patterns (scanned against the args) ──────────────────────
+  - name: block-confidential-content
+    condition: {field: params, operator: contains, value: confidential}
+    action: deny
+    priority: 300
+    message: "Requests referencing 'confidential' content are blocked by policy."
+
+  - name: block-restricted-content
+    condition: {field: params, operator: contains, value: restricted}
+    action: deny
+    priority: 300
+    message: "Requests referencing 'restricted' content are blocked by policy."
+
+# These keys are what the SDK ENFORCES when it pulls the policy.
+# blocked_actions matches the coarse governed action name exactly.
+defaults:
+  action: allow
+  blocked_actions:
+    - run_tool_execution         # <-- blocks the coordinator dispatch action
+  blocked_patterns:
+    - confidential
+    - restricted
+  require_approval: []

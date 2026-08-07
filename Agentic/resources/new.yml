@@ -1,0 +1,46 @@
+name: agt-customer-policy
+version: '1.0'
+description: >-
+  Governance policy for the customer's agents. All actions allowed (blocked_actions
+  and blocked_patterns cleared).
+rules:
+  - name: allow-coordinator-run-tool-execution
+    description: null
+    condition:
+      field: action
+      operator: eq
+      value: run_tool_execution
+    action: allow
+    priority: 100
+    message: Coordinator tool execution is allowed.
+  - name: allow-financial-tool-call
+    description: null
+    condition:
+      field: action
+      operator: eq
+      value: finagent-tool-call
+    action: allow
+    priority: 100
+    message: Financial agent tool calls are allowed.
+  - name: allow-research-tool-call
+    description: null
+    condition:
+      field: action
+      operator: eq
+      value: research-tool-call
+    action: allow
+    priority: 100
+    message: Research agent tool calls are allowed.
+defaults:
+  min_trust_score: 500
+  max_delegation_depth: 3
+  allowed_namespaces:
+    - '*'
+  require_handshake: true
+  action: allow
+  max_tokens: null
+  max_tool_calls: null
+  confidence_threshold: null
+  blocked_actions: []
+  blocked_patterns: []
+  require_approval: []

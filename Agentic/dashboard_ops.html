@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Agentic Ops · Governed Dashboard</title>
+<style>
+  :root{
+    --bg:#0b1020; --panel:#111834; --panel2:#0e1530; --border:#1e2a52;
+    --text:#e7ecff; --muted:#8aa0d6; --accent:#7c5cff; --accent2:#3aa0ff;
+    --green:#39d98a; --amber:#ffb020; --red:#ff5c7c; --pink:#ff6ba6;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:'Segoe UI',system-ui,sans-serif;color:var(--text);
+    background:radial-gradient(1200px 600px at 70% -10%, #16204a 0%, var(--bg) 55%);min-height:100vh}
+  header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--border)}
+  .brand{display:flex;align-items:center;gap:12px}
+  .logo{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));font-size:18px}
+  .brand h1{font-size:16px;margin:0;font-weight:700}
+  .brand small{color:var(--muted);font-size:11px;letter-spacing:.12em;text-transform:uppercase}
+  .live{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--green);
+    background:#0f2033;border:1px solid #14406b;padding:6px 12px;border-radius:20px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--green);
+    box-shadow:0 0 0 0 rgba(57,217,138,.6);animation:pulse 1.6s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(57,217,138,.5)}70%{box-shadow:0 0 0 8px rgba(57,217,138,0)}100%{box-shadow:0 0 0 0 rgba(57,217,138,0)}}
+  .grid{display:grid;grid-template-columns:340px 1fr;gap:16px;padding:16px}
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--border);border-radius:14px;padding:14px}
+  .card h2{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 12px}
+  textarea{width:100%;min-height:80px;background:#0a1130;color:var(--text);border:1px solid var(--border);
+    border-radius:10px;padding:10px;resize:vertical;font-family:inherit;font-size:13px}
+  button.run{width:100%;margin-top:10px;padding:12px;border:0;border-radius:10px;color:#fff;font-weight:700;
+    cursor:pointer;font-size:14px;background:linear-gradient(135deg,var(--accent),#5a3ff0)}
+  button.run:disabled{opacity:.6;cursor:not-allowed}
+  .samples{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .chip{font-size:11px;padding:5px 10px;border-radius:16px;cursor:pointer;border:1px solid var(--border);color:var(--muted);background:#0c1330}
+  .chip:hover{border-color:var(--accent)}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}
+  .stat{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--border);border-radius:14px;padding:12px}
+  .stat .n{font-size:24px;font-weight:800}.stat .l{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-top:4px}
+  .stat.ev .n{color:var(--accent2)}.stat.guard .n{color:var(--green)}.stat.block .n{color:var(--red)}
+  .stream{max-height:56vh;overflow:auto;font-size:12.5px}
+  .ev{display:flex;gap:10px;padding:8px 6px;border-left:3px solid var(--border);margin-bottom:6px;background:#0a1130;border-radius:0 8px 8px 0;animation:fade .3s}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1}}
+  .ev .t{color:var(--muted);font-variant-numeric:tabular-nums;flex:0 0 62px}
+  .ev .tag{font-size:9px;font-weight:800;letter-spacing:.06em;padding:2px 7px;border-radius:6px;height:fit-content;flex:0 0 auto;text-transform:uppercase}
+  .ev .msg{flex:1;word-break:break-word}
+  .tag.log{background:#123b6b;color:#9fd0ff}
+  .tag.guardrail,.tag.guardrail_scan,.tag.guardrail_verdict{background:#123b6b;color:#9fd0ff}
+  .tag.blocked,.tag.err{background:#4a1020;color:#ff9db4}
+  .tag.agent_start,.tag.agent{background:#2a1b5c;color:#c3b0ff}
+  .tag.tool,.tag.mcp{background:#0f3a2f;color:#7fe6c0}
+  .tag.status{background:#1a2140;color:#9fb0e0}
+  .tag.result{background:#0f2418;color:#7fe6b0}
+  .ev.blocked{border-left-color:var(--red)}
+  .final{white-space:pre-wrap;font-size:13px;line-height:1.5;color:#dfe6ff}
+  .placeholder{color:var(--muted);font-style:italic}
+  .filters{display:flex;gap:6px;margin-bottom:10px}
+  ::-webkit-scrollbar{width:8px}::-webkit-scrollbar-thumb{background:#22305e;border-radius:8px}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="logo">⚡</div>
+    <div><h1>Agentic Ops <span style="color:var(--muted);font-weight:500">· Governed</span></h1>
+      <small>Coordinator · Financial · Research</small></div>
+  </div>
+  <div class="live"><span class="dot"></span><span id="conn">Live · Connecting…</span></div>
+</header>
+
+<div class="grid">
+  <!-- LEFT -->
+  <div>
+    <div class="card">
+      <h2>🛰️ Task</h2>
+      <textarea id="task" placeholder="Describe a task…">Analyze the stock performance of AAPL</textarea>
+      <button class="run" id="runBtn">▶ Run</button>
+      <div class="samples" id="samples">
+        <span class="chip">Analyze the stock performance of AAPL</span>
+        <span class="chip">Get financial metrics for TSLA</span>
+        <span class="chip">Latest news on NVIDIA</span>
+        <span class="chip">Research confidential earnings for ACME</span>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h2>📊 Final Result</h2>
+      <div id="final" class="placeholder">Run a task to see the fused result.</div>
+    </div>
+  </div>
+
+  <!-- RIGHT -->
+  <div>
+    <div class="stats">
+      <div class="stat ev"><div class="n" id="c_ev">0</div><div class="l">Events</div></div>
+      <div class="stat guard"><div class="n" id="c_guard">0</div><div class="l">Guardrail</div></div>
+      <div class="stat block"><div class="n" id="c_block">0</div><div class="l">Blocked</div></div>
+    </div>
+    <div class="card">
+      <h2>▶ Live Event Stream <span id="evCount" style="margin-left:auto;color:var(--accent2)">0</span></h2>
+      <div class="filters">
+        <span class="chip" data-f="all" style="background:var(--accent);color:#fff;border-color:var(--accent)">All</span>
+        <span class="chip" data-f="guardrail">Guardrail</span>
+        <span class="chip" data-f="blocked">Blocked</span>
+        <span class="chip" data-f="clear" style="margin-left:auto">⛶ Clear</span>
+      </div>
+      <div class="stream" id="stream"><div class="placeholder">Waiting for events…</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+let counts = {ev:0, guard:0, block:0}, filter="all";
+
+function esc(t){return (t||"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+function clock(){return new Date().toLocaleTimeString();}
+
+function textOf(ev){
+  if(ev.message) return ev.message;
+  if(ev.status) return ev.status;
+  const bits=[];
+  if(ev.agent) bits.push("agent="+ev.agent);
+  if(ev.tool) bits.push("tool="+ev.tool);
+  if(ev.verdict) bits.push("verdict="+ev.verdict);
+  if(ev.reason) bits.push("reason="+ev.reason);
+  if(bits.length) return bits.join("  ");
+  return JSON.stringify(ev);
+}
+function isBlocked(ev){
+  const t=(ev.type||"").toLowerCase();
+  return t.includes("block") || ev.blocked===true || (ev.level==="err") ||
+    /deny|denied|blocked/i.test(ev.status||ev.message||"");
+}
+
+function addEvent(ev){
+  counts.ev++;
+  const type=(ev.type||"event").toLowerCase();
+  if(type.includes("guardrail")) counts.guard++;
+  const blocked=isBlocked(ev);
+  if(blocked) counts.block++;
+  $("#c_ev").textContent=counts.ev; $("#c_guard").textContent=counts.guard; $("#c_block").textContent=counts.block;
+  $("#evCount").textContent=counts.ev;
+
+  // filter
+  if(filter==="guardrail" && !type.includes("guardrail")) return;
+  if(filter==="blocked" && !blocked) return;
+
+  const ph=$("#stream .placeholder"); if(ph) ph.remove();
+  const div=document.createElement("div");
+  div.className="ev"+(blocked?" blocked":"");
+  const tagClass = blocked ? "blocked" : type;
+  div.innerHTML=`<span class="t">${clock()}</span>`+
+    `<span class="tag ${tagClass}">${esc(type)}</span>`+
+    `<span class="msg">${esc(textOf(ev))}</span>`;
+  const s=$("#stream"); s.appendChild(div); s.scrollTop=s.scrollHeight;
+}
+
+// filters
+document.querySelector(".filters").addEventListener("click", e=>{
+  const chip=e.target.closest(".chip"); if(!chip) return;
+  const f=chip.dataset.f;
+  if(f==="clear"){ $("#stream").innerHTML='<div class="placeholder">Cleared.</div>'; return; }
+  filter=f;
+  document.querySelectorAll(".filters .chip").forEach(c=>{
+    const on=c===chip; c.style.background=on?"var(--accent)":"#0c1330";
+    c.style.color=on?"#fff":"var(--muted)"; c.style.borderColor=on?"var(--accent)":"var(--border)";
+  });
+});
+
+// sample chips
+$("#samples").addEventListener("click", e=>{
+  const chip=e.target.closest(".chip"); if(!chip) return;
+  $("#task").value=chip.textContent;
+});
+
+// run
+$("#runBtn").addEventListener("click", async ()=>{
+  const task=$("#task").value.trim(); if(!task) return;
+  const btn=$("#runBtn"); btn.disabled=true; btn.textContent="⏳ Running…";
+  $("#final").textContent="Running… watch the event stream."; $("#final").className="placeholder";
+  try{
+    const r=await fetch("/analyze",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({task})});
+    const j=await r.json();
+    const out = j && (j.result!==undefined ? j.result : j);
+    $("#final").textContent = (typeof out==="string") ? out : JSON.stringify(out,null,2);
+    $("#final").className="final";
+    addEvent({type:"result", message:"final result received"});
+  }catch(e){
+    $("#final").textContent="Error: "+e; $("#final").className="final";
+  }finally{
+    btn.disabled=false; btn.textContent="▶ Run";
+  }
+});
+
+// websocket
+let ws;
+function connect(){
+  const proto = location.protocol==="https:"?"wss":"ws";
+  ws=new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onopen=()=>{ $("#conn").textContent="Live · Connected"; };
+  ws.onclose=()=>{ $("#conn").textContent="Reconnecting…"; setTimeout(connect,1500); };
+  ws.onmessage=e=>{ try{ addEvent(JSON.parse(e.data)); }catch(_){ addEvent({type:"log",message:String(e.data)}); } };
+}
+connect();
+</script>
+</body>
+</html>

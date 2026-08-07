@@ -1,0 +1,10 @@
+{
+  "_comment": "Copy this to Agentic/guardrails_config.json to enable the external guardrail scanner. Leaving it absent disables scanning; AGT governance still works.",
+  "token": "",
+  "scans_base_url": "https://us1.test.app",
+  "provider": "azure-gpt4o-mini",
+  "dashboard_event_url": "http://localhost:8080/event",
+  "session_id_header": "x-cai-metadata-session-id",
+  "layers": {},
+  "session_ids": {}
+}

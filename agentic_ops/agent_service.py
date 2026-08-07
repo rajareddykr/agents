@@ -5,10 +5,12 @@ Coordinator process calls ``POST /analyze``; the worker runs the analysis,
 captures the events it emitted for that session, and returns them so the
 coordinator can replay them onto the dashboard's live stream.
 
-VANILLA build: the worker has no mesh identity/DID. ``/whoami`` returns just
-its role + name. (In the governed build, the process seeds its AGT identity
-from AGENT_ROLE before agt_sdk imports, and ``/whoami`` returns the real
-``did:mesh`` so the coordinator can handshake against it.)
+Identity: ``governance`` is imported first (module top), which maps this
+role's durable credential + org passphrase into the SDK env vars. At startup
+we eagerly call ``AutoKernel.instance()`` so the SDK's IMPL-067 attach runs
+BEFORE the coordinator hits ``/whoami`` — otherwise the first ``/whoami`` can
+race the attach and return ``did=None`` and the coordinator would refuse the
+handshake for a peer that is in fact perfectly identified.
 """
 from __future__ import annotations
 
@@ -45,7 +47,19 @@ class AnalyzeReq(BaseModel):
 
 @app.on_event("startup")
 async def _register_on_startup():
-    await asyncio.to_thread(governance.authorize, "agent_online", ROLE)
+    # Force the SDK to run its cold-path (bootstrap → attach → mesh wiring) NOW
+    # so ``/whoami`` returns the recovered DID on its first call. Doing this
+    # via ``authorize`` alone works but is lazy; running AutoKernel.instance()
+    # explicitly makes the observable "same DID across restarts" behaviour
+    # deterministic.
+    def _warm() -> None:
+        try:
+            from agt_sdk import AutoKernel
+            AutoKernel.instance()
+        except Exception:  # noqa: BLE001 — SDK may be disabled / unavailable
+            pass
+        governance.authorize("agent_online", ROLE)
+    await asyncio.to_thread(_warm)
 
 
 

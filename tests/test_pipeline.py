@@ -13,10 +13,29 @@ import pytest
 os.environ["LIVE"] = "0"
 os.environ.pop("FIN_AGENT_URL", None)
 os.environ.pop("RES_AGENT_URL", None)
+# The pipeline suite is offline-scope by design: no server, no CP, no network.
+# Turning governance off keeps the SDK in pass-through so CP-side rules (e.g.
+# ``block-fundamentals``) do not enter the pipeline flow being tested here.
+# End-to-end CP enforcement is exercised by smoke_test.py / verify_did_stability.py
+# when a live CP is reachable.
+os.environ["AGT_GOVERNANCE_ENABLED"] = "false"
+
+# ``governance`` reads AGT_GOVERNANCE_ENABLED at IMPORT time and caches the
+# result in module-level state. Another test file (``test_registration.py``)
+# may have already imported it with governance ON — force a fresh import so
+# the env override above takes effect for this suite.
+import importlib  # noqa: E402
+import sys        # noqa: E402
+for _mod in ("agentic_ops.governance", "agentic_ops.mcp.base",
+             "agentic_ops.mcp.fin_mcp", "agentic_ops.mcp.news_mcp",
+             "agentic_ops.orchestrator"):
+    sys.modules.pop(_mod, None)
 
 from agentic_ops.events import BUS, EventType  # noqa: E402
 from agentic_ops.orchestrator import Orchestrator, extract_entity  # noqa: E402
 from agentic_ops import guardrails  # noqa: E402
+from agentic_ops import governance  # noqa: E402
+assert not governance.AVAILABLE, "governance must be OFF for this offline suite"
 
 
 async def _run(mission: str):

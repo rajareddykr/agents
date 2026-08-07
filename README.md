@@ -1,4 +1,4 @@
-# Agentic AI & MCP — Agent Ops (Vanilla)
+# Agentic AI & MCP — Agent Ops
 
 A **plain, un-governed multi-agent orchestration engine** with a live web
 dashboard. This is the clean baseline of the `agentic-mcp-ops` project with
@@ -57,9 +57,11 @@ agentic-mcp-ops-vanilla/
 ├── run.py                     # launcher (single or distributed)
 ├── requirements.txt           # fastapi + uvicorn only
 ├── .env.example               # all optional; app runs offline by default
-├── smoke_test.py              # autonomous, stdlib-only self-test
+├── smoke_test.py              # offline pipeline self-test (stdlib only)
+├── verify_did_stability.py    # end-to-end: same DID across restart (needs CP)
 ├── tests/
-│   └── test_pipeline.py       # pytest suite (15 cases)
+│   ├── test_pipeline.py       # 15 pipeline cases (offline)
+│   └── test_registration.py   # 9 IMPL-067 register-once + passphrase cases
 ├── docs/
 │   ├── ARCHITECTURE.md        # how the pieces fit together
 │   └── AGT_MIGRATION_GUIDE.md # add agt-sdk / mesh / handshake, step by step
@@ -108,18 +110,67 @@ Distributed mode (default) runs each agent in its own process:
 python run.py     # workers on :8071/:8072, dashboard on :8000
 ```
 
-## Verify it (autonomous self-test)
+## Governed identity (IMPL-067 register-once + key escrow)
 
-No server needed — runs the whole pipeline in-process on mock data:
+Each of the three roles registers **once** in the CP UI (Register Agent) and
+receives a durable ``agt_...`` credential. Combined with a ≥32-char org-wide
+``AGT_AGENT_PASSPHRASE``, every restart recovers the private key from escrow
+and the agent comes back with the **same** ``did:mesh:...`` DID — trust score,
+drift history and policy bindings all carry over.
 
-```bash
-python smoke_test.py        # prints PASS/FAIL per check, exit 0 on success
-pytest -q                   # 15 granular cases
+Set up `.env`:
+
+```ini
+AGT_CP_URL=http://localhost:20355
+AGT_ORG_CODE=demodevelop
+AGT_AGENT_PASSPHRASE=<≥32 char org-wide secret, host-local, never transmitted>
+AGT_COORDINATOR_TOKEN=agt_...   # from Register Agent in the CP UI
+AGT_FIN_AGENT_TOKEN=agt_...
+AGT_RES_AGENT_TOKEN=agt_...
+AGT_AUTO_MINT=0                 # keep durable creds; do not overwrite on launch
 ```
 
-Both assert the full multi-agent flow: parallel delegation, two-way A2A
-messaging, both MCP servers called, simulated LLM calls, final fusion, plus the
-guardrail blocking a non-compliant mission.
+The three registered display names must match the ones in
+``agentic_ops/governance.py``:
+``Coordinator Agent`` · ``Financial Agent`` · ``Research Agent``.
+
+## Verify it (self-tests)
+
+Three tiers, each smaller-scope than the next:
+
+```bash
+python smoke_test.py                # 1) offline pipeline — no server, no CP
+pytest -q                           # 2) 24 unit + integration cases
+python verify_did_stability.py      # 3) end-to-end: same DID across restart
+```
+
+1. **`smoke_test.py`** runs the whole multi-agent pipeline in-process on mock
+   data: parallel delegation, two-way A2A messaging, both MCP servers called,
+   simulated LLM calls, final fusion, plus the guardrail blocking a
+   non-compliant mission.
+2. **`pytest -q`** — 15 pipeline cases + 9 registration/passphrase cases
+   (`tests/test_registration.py`): durable-token env mapping, stale-bootstrap
+   clearing, legacy-token fallback, missing/short passphrase, per-role name
+   binding, `SdkConfig.uses_agent_credential`, mesh identity fallback and
+   SDK-identity preference.
+3. **`verify_did_stability.py`** starts the three workers in fresh OS
+   processes, captures each ``/whoami`` DID, stops everything, restarts, and
+   asserts the DIDs are byte-identical. Requires a running CP with the three
+   agents already registered — otherwise it prints ``SKIP`` and exits 0.
+
+Example passing run of test 3:
+
+```
+=== ROUND 1 (first boot: generate keypair, attach, escrow) ===
+  [R1] fin_agent    -> did:mesh:410de4157617bd16f732086b
+  [R1] res_agent    -> did:mesh:b788509bc326d1e3134fc314
+  [R1] coordinator  -> did:mesh:55e24ebed0ba0e456d615660
+=== ROUND 2 (restart: recover from escrow — SAME DID expected) ===
+  [R2] fin_agent    -> did:mesh:410de4157617bd16f732086b
+  [R2] res_agent    -> did:mesh:b788509bc326d1e3134fc314
+  [R2] coordinator  -> did:mesh:55e24ebed0ba0e456d615660
+RESULT: PASS — DIDs stable across restart
+```
 
 ## Live data (Finnhub, optional)
 
