@@ -15,6 +15,7 @@ IMPL-065 A2A gate does all of that behind ``@peer_verified``.
 """
 from __future__ import annotations
 
+import os
 import asyncio
 import json
 import urllib.request
@@ -187,7 +188,12 @@ def _extract_entity(mission: str) -> str:
     return text
 
 
-def _post_json(url: str, payload: dict, timeout: int = 120) -> dict:
+def _post_json(url: str, payload: dict,
+               timeout: int = int(os.environ.get("AGT_SPECIALIST_HTTP_TIMEOUT", "300"))) -> dict:
+    # Default 300s (was 120): a specialist may now BLOCK waiting for a human
+    # approval (R4.1 block-and-resume). Must exceed the worker's total wait
+    # (AGT_APPROVAL_WAIT_SECONDS per held action) or the coordinator gives up
+    # mid-approval and reports the worker unreachable.
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, method="POST",
                                  headers={"Content-Type": "application/json"})

@@ -10,7 +10,19 @@
       "Bash(taskkill //F //IM python.exe)",
       "Bash(taskkill //F //IM pythonw.exe)",
       "Bash(tasklist //FI \"IMAGENAME eq python.exe\")",
-      "Bash(tasklist //FI \"IMAGENAME eq pythonw.exe\")"
+      "Bash(tasklist //FI \"IMAGENAME eq pythonw.exe\")",
+      "Bash(winget install *)",
+      "Bash(.venv/Scripts/pip.exe install *)",
+      "Bash(powershell.exe *)",
+      "Bash(\"/c/Program Files/Graphviz/bin/dot.exe\" -V)",
+      "Bash(gh repo *)",
+      "Bash(where graphify *)",
+      "Bash(npm list *)",
+      "Bash(graphify --help)",
+      "Bash(graphify install *)",
+      "Bash(graphify uninstall *)",
+      "Bash(uv tool *)",
+      "Bash(.venv/Scripts/python.exe -m pip uninstall -y graphifyy)"
     ]
   }
 }

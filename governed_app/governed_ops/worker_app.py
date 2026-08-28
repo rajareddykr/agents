@@ -22,7 +22,7 @@ from pydantic import BaseModel
 
 from agt_sdk.exceptions import AGTBlocked
 
-from . import config
+from . import config, policy_report
 from .events import BUS, Event, EventType
 from .specialist import FinancialAgent, ResearchAgent
 
@@ -40,6 +40,18 @@ if config.ROLE not in _ROLE_SPECIALIST:
 _SPECIALIST = _ROLE_SPECIALIST[config.ROLE]
 
 app = FastAPI(title=f"worker/{config.ROLE}")
+
+
+@app.on_event("startup")
+async def _report_policies() -> None:
+    """Name the bound policies in ``logs/governance.log``.
+
+    Runs at startup rather than at import: the SDK bootstraps (and fetches its
+    first bundle) when the first ``@governed`` function is defined, which is
+    during import of ``mcp_servers`` — so by the time uvicorn fires startup the
+    bundle is already applied and there is something to name.
+    """
+    policy_report.install()
 
 
 @app.on_event("startup")
@@ -110,6 +122,15 @@ def debug_reward() -> dict:
         return {"error": str(exc)}
 
 
+# NOTE: a temporary `/debug/compliance-test` endpoint lived here during the
+# compliance-engine wiring work. It forced synthetic HIPAA/GDPR-shaped calls
+# through the live kernel to prove `ComplianceEngine.check_compliance()` was
+# reachable end-to-end. Both frameworks were confirmed live (CP report
+# showed `evidence_source: "agentmesh-compliance-engine"` with real
+# violations for each), so the endpoint has served its purpose and was
+# removed — it had no auth and exposed internal kernel/DID state.
+
+
 @app.get("/whoami")
 def whoami() -> dict:
     """This worker's live identity — read straight from the SDK singleton.
@@ -143,9 +164,8 @@ async def analyze(req: AnalyzeReq) -> dict:
     """
     since = time.time()
     action = f"{_SPECIALIST.node_id}.analyze"
-    try:
-        result = await _SPECIALIST.analyze(req.entity, req.session)
-    except AGTBlocked as e:
+
+    def _blocked(e: Exception) -> dict:
         BUS.publish(Event(type=EventType.BLOCKED, source=_SPECIALIST.node_id,
                           session=req.session,
                           message=f"BLOCKED {action}: {e}",
@@ -154,9 +174,28 @@ async def analyze(req: AnalyzeReq) -> dict:
         # Match the "blocked" shape the coordinator's fuse logic understands
         # (see coordinator._fuse). ``verdict``/``sentiment`` = "blocked" is the
         # signal for partial view.
-        result = {"agent": _SPECIALIST.label, "blocked": True, "reason": str(e),
-                  "verdict": "blocked", "sentiment": "blocked",
-                  "summary": f"{_SPECIALIST.label} blocked by policy: {e}"}
+        return {"agent": _SPECIALIST.label, "blocked": True, "reason": str(e),
+                "verdict": "blocked", "sentiment": "blocked",
+                "summary": f"{_SPECIALIST.label} blocked by policy: {e}"}
+
+    try:
+        result = await _SPECIALIST.analyze(req.entity, req.session)
+    except AGTBlocked as e:
+        # R4.1 block-and-resume at the AGENT level: the @governed on analyze()
+        # fires before the body, so a require_approval hold lands here. Wait for
+        # a human grant, then re-run analyze; the SDK injects the grant so the
+        # rule now permits. A hard deny (or timeout) returns blocked as before.
+        from .mcp_servers import _await_grant  # noqa: PLC0415
+        if await _await_grant(action, {"entity": req.entity, "session": req.session}):
+            BUS.publish(Event(type=EventType.A2A, source=_SPECIALIST.node_id,
+                              session=req.session,
+                              message=f"{action} approved — resuming"))
+            try:
+                result = await _SPECIALIST.analyze(req.entity, req.session)
+            except AGTBlocked as e2:
+                result = _blocked(e2)
+        else:
+            result = _blocked(e)
     events = [e.to_dict() for e in BUS.history(since=since)
               if e.session == req.session]
     return {"result": result, "events": events}

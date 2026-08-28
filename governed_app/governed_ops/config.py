@@ -56,15 +56,18 @@ _load_dotenv()
 # and hands those to the SDK via AGT_AGENT_TOKEN + AGT_AGENT_NAME. Escrow is
 # keyed on (org, name), so name MUST match the name typed at Register Agent.
 
-_ROLE_SPECS: dict[str, tuple[str, str, int]] = {
-    # role_key: (env_var_holding_token, registered_agent_name, default_port)
-    "coordinator": ("AGT_COORDINATOR_TOKEN", "Coordinator Agent", 8100),
-    "fin_agent":   ("AGT_FIN_AGENT_TOKEN",   "Financial Agent",  8101),
-    "res_agent":   ("AGT_RES_AGENT_TOKEN",   "Research Agent",   8102),
+_ROLE_SPECS: dict[str, tuple[str, str, str, int]] = {
+    # role_key: (token_env_var, name_env_var, default_registered_name, default_port)
+    # Setting the name_env_var in .env overrides the default — handy when
+    # re-registering agents under new names during testing.
+    "coordinator": ("AGT_COORDINATOR_TOKEN", "AGT_COORDINATOR_NAME", "Coordinator Agent_2026-08-12", 8100),
+    "fin_agent":   ("AGT_FIN_AGENT_TOKEN",   "AGT_FIN_AGENT_NAME",   "Financial Agent_2026-08-12",  8101),
+    "res_agent":   ("AGT_RES_AGENT_TOKEN",   "AGT_RES_AGENT_NAME",   "Research Agent_2026-08-12",   8102),
 }
 
 ROLE = (os.environ.get("AGENT_ROLE") or "coordinator").strip().lower()
-_tok_env, AGENT_NAME, _default_port = _ROLE_SPECS.get(ROLE, _ROLE_SPECS["coordinator"])
+_tok_env, _name_env, _default_name, _default_port = _ROLE_SPECS.get(ROLE, _ROLE_SPECS["coordinator"])
+AGENT_NAME = (os.environ.get(_name_env) or "").strip() or _default_name
 _token = (os.environ.get(_tok_env) or "").strip()
 _passphrase = (os.environ.get("AGT_AGENT_PASSPHRASE") or "").strip()
 

@@ -29,6 +29,7 @@ import functools
 import inspect
 import logging
 import os
+import time
 
 log = logging.getLogger("agentic_ops.governance")
 
@@ -196,6 +197,57 @@ def authorize(action: str, node_id: str | None = None, **context) -> None:
         )
 
 
+def _blocked_result(self, e) -> dict:
+    return {"agent": getattr(self, "label", "Agent"),
+            "verdict": "blocked", "sentiment": "blocked",
+            "blocked": True, "reason": str(e),
+            "summary": f"blocked by governance ({e})"}
+
+
+def _call_params(fn, self, a, k) -> dict:
+    """Reconstruct the tool's call args as a params dict (drops ``self``)."""
+    try:
+        bound = inspect.signature(fn).bind(self, *a, **k)
+        bound.apply_defaults()
+        return {n: v for n, v in bound.arguments.items() if n != "self"}
+    except Exception:
+        return dict(k)
+
+
+async def _await_grant(action: str, params: dict, *, timeout_s: float = 900.0) -> bool:
+    """Block until a human grants the parked approval, else ``False``.
+
+    R4.1 block-and-resume. Only waits for a ``require_approval`` HOLD — a hard
+    ``deny`` returns ``False`` immediately, so the agent never hangs on
+    something no human will approve. Requires ``AGT_HITL_APPROVALS=true`` (that
+    is what gives the kernel its ``_approvals`` client).
+    """
+    if not AVAILABLE:
+        return False
+    kernel = _AutoKernel.instance()
+    approvals = getattr(kernel, "_approvals", None)
+    if approvals is None:
+        return False  # HITL not enabled → cannot wait
+    try:
+        from agt_sdk._approvals import detect_require_approval
+        if not detect_require_approval(kernel._kernel, action, params):
+            return False  # a real deny, not an approval hold
+    except Exception:
+        return False
+    await approvals.park(action, reason=f"{action}: awaiting human approval")
+    log.info("%s: parked — waiting up to %ds for a human grant", action, int(timeout_s))
+    interval = float(os.environ.get("AGT_APPROVAL_POLL_SECONDS", "10"))
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        await approvals.poll_once()
+        if approvals.grant_active(action):
+            log.info("%s: approval GRANTED — resuming", action)
+            return True
+        await asyncio.sleep(interval)
+    log.warning("%s: not granted within %ds — staying blocked", action, int(timeout_s))
+    return False
+
+
 def governed(action: str):
     def deco(fn):
         is_async = inspect.iscoroutinefunction(fn)
@@ -206,10 +258,19 @@ def governed(action: str):
             try:
                 await asyncio.to_thread(authorize, action, node)
             except AGTBlocked as e:
-                return {"agent": getattr(self, "label", "Agent"),
-                        "verdict": "blocked", "sentiment": "blocked",
-                        "blocked": True, "reason": str(e),
-                        "summary": f"blocked by governance ({e})"}
+                # R4.1 — a require_approval HOLD parks a request; wait for the
+                # human grant, then resume. A hard deny (or HITL off) stays
+                # blocked immediately.
+                params = _call_params(fn, self, a, k)
+                if await _await_grant(action, params):
+                    try:
+                        # re-check WITH the grant — `approved=True` satisfies
+                        # the require_approval rule.
+                        await asyncio.to_thread(authorize, action, node, approved=True)
+                    except AGTBlocked as e2:
+                        return _blocked_result(self, e2)
+                    return await fn(self, *a, **k)   # resume the real work
+                return _blocked_result(self, e)
             return await fn(self, *a, **k)
         return awrapper if is_async else fn
     return deco

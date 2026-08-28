@@ -18,7 +18,14 @@
       "Bash(curl -s --max-time 5 http://127.0.0.1:__TRACKED_VAR__/whoami)",
       "Bash(curl -s -o /tmp/r.json -w 'HTTP %{http_code}\\\\n' -H 'X-AGT-Token: agt_ykRQPilcpsqw4iHR8aFb5V9pzvlXlFI9GnlTsCrtitI' -H 'X-appsoc-api-key: 985a02ea046d48e9971c1cfe17544819145242504a014f53a58a9be74254d908' -H 'Accept: application/json' https://api.sqa1.appsoc.com/aisec-agents-gov/api/v1/orgs/demodevelop/agents/me)",
       "Bash(curl -s https://api.sqa1.appsoc.com/aisec-agents-gov/api/v1/orgs/demodevelop/agents -H 'X-appsoc-api-key: 985a02ea046d48e9971c1cfe17544819145242504a014f53a58a9be74254d908' -H 'Accept: application/json')",
-      "Bash(curl -s --max-time 2 http://127.0.0.1:__TRACKED_VAR__/health)"
+      "Bash(curl -s --max-time 2 http://127.0.0.1:__TRACKED_VAR__/health)",
+      "Bash(tee /tmp/governed_app.log)",
+      "Bash(curl -sf http://127.0.0.1:8100/whoami)",
+      "Bash(curl -sf http://127.0.0.1:8101/whoami)",
+      "Bash(curl -sf http://127.0.0.1:8102/whoami)",
+      "Bash(curl -s http://127.0.0.1:8101/whoami)",
+      "Bash(curl -s http://127.0.0.1:8102/whoami)",
+      "Bash(curl -s http://localhost:20355/openapi.json)"
     ]
   }
 }

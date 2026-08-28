@@ -11,10 +11,19 @@ fetch, trust graph publishing — happens automatically the first time a
 decorated function is defined (via ``AutoKernel.instance()`` inside the
 decorator itself).
 """
+# ``logging_setup`` MUST land first. ``config`` logs errors and warnings during
+# its own import (a missing credential, a short passphrase), and ``agt_sdk``
+# attaches its own stderr-only handler the first time it is imported — both of
+# which need ROOT handlers already in place to reach a file. See the module
+# docstring for the three ways diagnostics used to vanish.
+from . import logging_setup  # noqa: F401
+
+logging_setup.setup()
+
 # ``config`` runs its dotenv loader + role→credential mapping at import
 # time, so it MUST land before any module that imports ``agt_sdk`` (that is
 # where ``AutoKernel.instance()`` snapshots the env into ``SdkConfig``).
-from . import config  # noqa: F401
+from . import config  # noqa: E402,F401
 
 
 def _patch_sdk_org_slug_regex() -> None:

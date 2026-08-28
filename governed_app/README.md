@@ -43,9 +43,11 @@ governed_app/
 ├── README.md                     ← you are here
 ├── .env.example                  ← copy to .env, paste registered credentials
 ├── requirements.txt              ← fastapi + uvicorn + agt-sdk[mesh,bootstrap]
-├── run.py                        ← launcher: spawns 3 uvicorn processes
+├── run.py                        ← launcher: spawns 3 uvicorn processes, tees their output
+├── logs/                         ← runtime logs (gitignored, see "Logs" below)
 └── governed_ops/
-    ├── __init__.py               ← runs config.py FIRST (env before SDK)
+    ├── __init__.py               ← runs logging_setup THEN config (before any SDK import)
+    ├── logging_setup.py          ← the only module that configures `logging`
     ├── config.py                 ← dotenv + AGENT_ROLE → per-role credential + port
     ├── events.py                 ← tiny in-memory bus (per process)
     ├── guardrails.py             ← local regex safety net (offline)
@@ -153,6 +155,74 @@ curl -s -X POST http://127.0.0.1:8100/mission \
 # 4. Stop all processes (Ctrl+C in the run.py terminal), restart, hit /whoami again
 #    → same three DIDs  (recovered from CP escrow using AGT_AGENT_PASSPHRASE)
 ```
+
+---
+
+## Logs
+
+Everything is written to `governed_app/logs/` (gitignored — the files carry
+agent DIDs, policy decisions and request payloads). Override the location with
+`AGT_LOG_DIR`; set the verbosity with `AGT_LOG_LEVEL` (already `DEBUG` in
+`.env.example`).
+
+| File | Contents |
+|---|---|
+| `coordinator.log`, `fin_agent.log`, `res_agent.log` | every `logging` record that process emits, at `AGT_LOG_LEVEL`, including uvicorn's |
+| `governance.log` | governance-only slice — `agent_os.*`, `agt_sdk.*`, `governed_ops.*` — always at DEBUG regardless of `AGT_LOG_LEVEL` |
+| `<role>.console.log` | raw stdout/stderr of that child, teed by `run.py` |
+| `launcher.log` | `run.py`'s own lines, including `child exited (N)` |
+
+**Start here when a call is blocked and you don't know which lane blocked it:**
+
+```bash
+# WHICH policies are bound to each process, and which lane enforces each
+grep "governed_ops.policy" logs/governance.log
+
+# Did any policy fail to parse, or arrive empty?
+grep -E "IMPL-059|EMPTY policy bundle|did not parse" logs/governance.log
+
+# The allow/deny trail
+grep -iE "blocked|denied|decision posted" logs/governance.log
+```
+
+`governed_ops/policy_report.py` writes the first of those at startup and again
+after **every** bundle refresh, so it stays true when you edit a policy in the
+CP while the agents are running:
+
+```
+policy bundle (startup): 2 policy/policies — rule_engine=on evaluator=compiled
+  policy 'agt-travel-planner-policy' enforced_by=rules[]+lists | rules=16 [...] | blocked_patterns=14
+  policy 'agt-vanilla-test-policy'   enforced_by=rules[]       | rules=5  [...] | no defaults lists
+```
+
+`enforced_by` is the column that matters, because a policy can be delivered and
+still enforce nothing:
+
+| `enforced_by` | Meaning |
+|---|---|
+| `rules[]` | the rule engine evaluates it (deny short-circuits first) |
+| `lists` | `defaults.blocked_actions` / `blocked_patterns` / `require_approval` |
+| `rules[]+lists` | both, engine first — see [Policy authoring reminder](#policy-authoring-reminder) |
+| `NOTHING` | **delivered but enforcing nothing** — either the document didn't parse, or the engine is off. A WARNING on the next line says which. |
+
+The SDK itself only ever logs the bundle *count* (`fetched 2 policies`), and its
+`diagnostics()["policies_loaded"]` lists the legacy-list lane only — so a
+rules-only policy reads as absent there. That is why this is reported from the
+app rather than taken from the SDK.
+
+`governance.log` is deliberately DEBUG-only-always, because the one line that
+tells you whether the `rules[]` lane is enforcing at all —
+`IMPL-059: policy '…' did not parse as a rule document; list-model only` —
+is otherwise unrecoverable after the fact. Without it, a deny that came from
+`defaults.blocked_actions` is indistinguishable from one that came from a
+`rules[]` deny, and they mean very different things (see
+[Policy authoring reminder](#policy-authoring-reminder)).
+
+Why this needed its own module: `AGT_LOG_LEVEL` is applied by the SDK to the
+**`agt_sdk`** logger only, while the engine that decides allow/deny logs under
+**`agent_os.*`**; uvicorn leaves the root logger bare, so those records used to
+fall through to `logging.lastResort` (WARNING+, unformatted) or vanish
+entirely. `governed_ops/logging_setup.py` documents the full failure mode.
 
 ---
 

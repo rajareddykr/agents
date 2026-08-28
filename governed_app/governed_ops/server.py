@@ -16,7 +16,7 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from . import config
+from . import config, policy_report
 from .coordinator import Coordinator
 from .events import BUS
 
@@ -31,6 +31,17 @@ if config.ROLE != "coordinator":
 
 app = FastAPI(title="coordinator")
 _coord = Coordinator()
+
+
+@app.on_event("startup")
+async def _report_policies() -> None:
+    """Name the bound policies in ``logs/governance.log``.
+
+    The coordinator's own bundle is worth naming separately from the workers':
+    the three processes have three DIDs, so the CP resolves three independently
+    scoped bundles and they can legitimately differ.
+    """
+    policy_report.install()
 
 
 class Mission(BaseModel):
